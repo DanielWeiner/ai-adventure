@@ -5,8 +5,8 @@ import React from 'react'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata = {
-  title: 'Talk to a Mob Boss',
-  description: 'Have a conversation with a mob boss, powered by OpenAI API and GPT-3.5',
+  title: 'AI Adventure',
+  description: 'Create an AI Adventure.',
 }
 
 export default function RootLayout({ children } : { children : React.ReactNode }) {
