@@ -1,0 +1,24 @@
+services:
+  db: 
+    image: mongo
+    env_file:
+      - .env
+    ports:
+      - $MONGO_PORT:$MONGO_PORT
+    volumes:
+      - ./data/db:/data/db
+  app:
+    image: node:18
+    working_dir: /home/node/app
+    volumes:
+      - ./:/home/node/app
+    ports:
+      - $APP_PORT:$APP_PORT
+    env_file:
+      - .env
+    environment:
+      - MONGO_HOST=db
+      - APP_HOST=app
+    command: npm run dev
+    links:
+      - db
