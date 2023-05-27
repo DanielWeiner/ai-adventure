@@ -1,3 +1,4 @@
+import { getMongoDatabase } from "@/app/mongo";
 import { Collection, MongoClient } from "mongodb";
 import { ChatCompletionRequestMessageRoleEnum } from "openai";
 
@@ -15,19 +16,8 @@ export interface Conversation {
     messages: Message[];
 }
 
-const {
-    MONGO_USERNAME,
-    MONGO_PASSWORD,
-    MONGO_DB,
-    MONGO_PORT
-} = process.env;
-
-export function createMongoClient() {
-    return new MongoClient(`mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@db:${MONGO_PORT}`);
-}
-
 export function getConversationCollection(mongoClient: MongoClient) : Collection<Conversation> {
-    return mongoClient.db(MONGO_DB).collection<Conversation>('conversations');
+    return getMongoDatabase(mongoClient).collection<Conversation>('conversations');
 }
 
 export async function findOrCreateConversation(collection: Collection<Conversation>,  conversationId: string) {

@@ -1,4 +1,5 @@
-import { createMongoClient, getConversationCollection, Message } from "@/app/conversation";
+import { getConversationCollection, Message } from "@/app/api/conversation/conversation";
+import { createMongoClient } from "@/app/mongo";
 import { AxiosResponse } from "axios";
 import { IncomingMessage } from "http";
 import { revalidateTag } from "next/cache";

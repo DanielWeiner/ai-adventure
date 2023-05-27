@@ -1,6 +1,6 @@
 'use client';
 
-import { Message } from "@/app/conversation";
+import { Message } from "@/app/api/conversation/conversation";
 import { MutableRefObject, useEffect, useRef, useState } from "react";
 
 const ChatBubble = ({ role, children } : { children: React.ReactNode, role: string }) => {

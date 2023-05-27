@@ -1,4 +1,5 @@
-import { createMongoClient, getConversationCollection, findOrCreateConversation } from "@/app/conversation";
+import { getConversationCollection, findOrCreateConversation } from "@/app/api/conversation/conversation";
+import { createMongoClient } from "@/app/mongo";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from 'uuid';
 

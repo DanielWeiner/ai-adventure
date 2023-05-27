@@ -1,4 +1,5 @@
-import { createMongoClient, getConversationCollection } from "@/app/conversation";
+import { getConversationCollection } from "@/app/api/conversation/conversation";
+import { createMongoClient } from "@/app/mongo";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(_: NextRequest, { params: { conversationId } } : { params: { conversationId: string } }) {

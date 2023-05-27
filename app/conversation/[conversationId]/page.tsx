@@ -11,8 +11,6 @@ async function getMessages(conversationId: string) {
 export default async function Conversation({ params: { conversationId } } : { params: { conversationId: string }}) {
     const messages = await getMessages(conversationId);
     return (
-        <main className="flex flex-row justify-center px-4 py-0 max-h-screen min-h-screen h-screen">
-            <ChatBox initialChatLog={messages} conversationId={conversationId}></ChatBox>
-        </main>
+        <ChatBox initialChatLog={messages} conversationId={conversationId}></ChatBox>
     );
 }
