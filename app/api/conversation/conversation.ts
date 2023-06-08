@@ -5,6 +5,12 @@ import { ChatCompletionRequestMessageRoleEnum } from "openai";
 export interface Message {
     content: string;
     role: ChatCompletionRequestMessageRoleEnum;
+    deleted: boolean;
+}
+
+export interface ConversationPurpose {
+    type: 'create' | 'adventure';
+    context: string;
 }
 
 export interface Conversation {

@@ -1,6 +1,6 @@
 'use client';
 
-import { Message } from "@/app/api/conversation/conversation";
+import { ConversationPurpose, Message } from "@/app/api/conversation/conversation";
 import { MutableRefObject, useEffect, useRef, useState } from "react";
 
 const ChatBubble = ({ role, children } : { children: React.ReactNode, role: string }) => {
@@ -17,7 +17,12 @@ const ChatBubble = ({ role, children } : { children: React.ReactNode, role: stri
     );
 }
 
-export default function ChatBox({ conversationId, initialChatLog } : { conversationId: string, initialChatLog: Message[]}) {
+export default function ChatBox({ conversationId, initialChatLog, purpose } : { 
+    conversationId: string, 
+    initialChatLog: Message[], 
+    transientToken?: string | null,
+    purpose: ConversationPurpose
+}) {
     const [ text, setText ] = useState("");
     const [ chatContents, setChatContents ] = useState("");
     const [ chatId, setChatId ] = useState("");
@@ -27,19 +32,22 @@ export default function ChatBox({ conversationId, initialChatLog } : { conversat
     const chatLogRef = useRef(initialChatLog);
     const [ chatResponse, setChatResponse ] = useState("");
     const [ chatLog, setChatLog ] = useState(initialChatLog);
-    const scroller = useRef(null) as MutableRefObject<HTMLDivElement | null>;
+    const scroller = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (!chatContents) return;
         setChatContents("");
-        chatLogRef.current = [...chatLogRef.current, { role: 'user', content: chatContents }];
+        chatLogRef.current = [...chatLogRef.current, { role: 'user', content: chatContents, deleted: false }];
         setChatLog(chatLogRef.current);
         setText("");
 
         (async () => {
             const response = await fetch(`/api/conversation/${conversationId}/chat`, {
                 method: "POST",
-                body: JSON.stringify(chatContents)
+                body: JSON.stringify({
+                    message: chatContents,
+                    purpose
+                })
             });
             
             chatResponseRef.current = "";
@@ -54,7 +62,7 @@ export default function ChatBox({ conversationId, initialChatLog } : { conversat
             const newEventSource = new EventSource(`/api/conversation/${conversationId}/chat/${chatId}`);
             
             const end = () => {
-                chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current } ];
+                chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current, deleted: false } ];
                 newEventSource.close();
                 setChatId(""); 
                 setEventSource(null);
@@ -87,11 +95,8 @@ export default function ChatBox({ conversationId, initialChatLog } : { conversat
     }, [scroller, chatLog, chatResponse])
 
     return (
-        <section className="flex flex-col w-6/12 max-h-full h-full">
-            <div className="rounded-sm flex-grow overflow-hidden flex flex-col shadow-md" style={{
-                    borderBottomLeftRadius: 0,
-                    borderBottomRightRadius: 0
-                }}>
+        <section className="flex flex-col w-full max-h-full h-full">
+            <div className="rounded-sm flex-grow overflow-hidden flex flex-col shadow-md [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
                     <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3 ${chatLog.length === 0 && !chatResponse ? 'justify-center' : 'justify-end' }`}>
                         {
@@ -115,17 +120,12 @@ export default function ChatBox({ conversationId, initialChatLog } : { conversat
                 <div className="relative rounded-md shadow-md">
                     <input 
                         type="text"
-                        className="block h-12 text-md w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600" 
-                        style={{
-                            borderTopLeftRadius: 0,
-                            borderTopRightRadius: 0
-                        }}
+                        className="block h-12 text-md w-full rounded-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 [border-top-left-radius:0] [border-top-right-radius:0]" 
                         value={ text }
                         placeholder="Say something..."
                         onChange={ input => setText(input.target.value) }/>
                 </div>
             </form>
         </section>
-        
     )
 }

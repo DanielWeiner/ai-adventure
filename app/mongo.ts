@@ -4,15 +4,21 @@ const {
     MONGO_USERNAME,
     MONGO_PASSWORD,
     MONGO_DB,
-    MONGO_PORT
+    MONGO_HOST,
+    MONGO_PORT,
+    MONGO_AUTH_DB
 } = process.env;
 
 export function createMongoClient() {
-    return new MongoClient(`mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@db:${MONGO_PORT}`);
+    return new MongoClient(`mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}`);
 }
 
 export function getMongoDatabase(mongoClient: MongoClient) {
     return mongoClient.db(MONGO_DB);
+}
+
+export function getMongoAuthDatabase(mongoClient: MongoClient) {
+  return mongoClient.db(MONGO_AUTH_DB);
 }
 
 let client;

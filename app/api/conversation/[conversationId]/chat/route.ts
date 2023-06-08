@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from 'uuid';
 
 export async function POST(req: NextRequest, { params: { conversationId } } : { params: { conversationId: string } }) {
-    const message = await req.json();
+    const { message } = await req.json();
     
     if (!message) {
         return NextResponse.json("");

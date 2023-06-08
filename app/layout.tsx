@@ -1,5 +1,4 @@
 import './globals.css';
-import 'preline';
 import { Inter } from 'next/font/google';
 import React from 'react';
 import Header from './header';
@@ -24,7 +23,7 @@ export default async function RootLayout({ children } : { children : React.React
   return (
     <html lang="en">
       <body className={`flex flex-col max-h-screen min-h-screen h-screen ${inter.className} bg-slate-100`}>
-        <Header loggedIn={loggedIn} userEmail={userEmail} userName={userName} userImage={userImage}/>
+        <Header loggedIn={loggedIn} userName={userName} userImage={userImage}/>
         <Main>
           {children}
         </Main>
