@@ -1,7 +1,12 @@
 'use client';
 
-import { ConversationPurpose, Message } from "@/app/api/conversation/conversation";
-import { MutableRefObject, useEffect, useRef, useState } from "react";
+import { ConversationPurpose, Message } from "@/app/api/conversation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useCreationContext } from "../create/context";
+
+const fetchJson = async <T,>(url: string, options?: RequestInit) : Promise<T> => (await fetch(`/api/${url}`, options)).json();
+const getMessages = (conversationId: string) => fetchJson<Message[]>(`/conversation/${conversationId}/message`);
 
 const ChatBubble = ({ role, children } : { children: React.ReactNode, role: string }) => {
     return (
@@ -13,36 +18,49 @@ const ChatBubble = ({ role, children } : { children: React.ReactNode, role: stri
                 <p>{children}</p>
             </div>
         </div>
-        
     );
 }
 
-export default function ChatBox({ conversationId, initialChatLog, purpose } : { 
+export default function ChatBox({ conversationId, purpose } : { 
     conversationId: string, 
-    initialChatLog: Message[], 
-    transientToken?: string | null,
     purpose: ConversationPurpose
 }) {
     const [ text, setText ] = useState("");
     const [ chatContents, setChatContents ] = useState("");
-    const [ chatId, setChatId ] = useState("");
     const [ eventSource, setEventSource ] = useState<EventSource | null>(null);
 
+    const { sessionToken, messages: remoteChatLog } = useCreationContext();
+    const chatLogRef = useRef(remoteChatLog);
+    const [ chatLog, setChatLog ] = useState(remoteChatLog);
+
+    const queryClient = useQueryClient();
+    
+    const { data: messages } = useQuery({
+        queryKey: [`conversation_${sessionToken}_${conversationId}`],
+        queryFn: () => getMessages(conversationId),
+        initialData: remoteChatLog
+    });
+
     const chatResponseRef = useRef("");
-    const chatLogRef = useRef(initialChatLog);
     const [ chatResponse, setChatResponse ] = useState("");
-    const [ chatLog, setChatLog ] = useState(initialChatLog);
     const scroller = useRef<HTMLDivElement | null>(null);
+    const [ pendingChat, setPendingChat ] = useState(messages.length === 0);
+
+    useEffect(() => {
+        chatLogRef.current = [...messages];
+        setChatLog(chatLogRef.current);
+    }, [ messages ]);
 
     useEffect(() => {
         if (!chatContents) return;
+
         setChatContents("");
-        chatLogRef.current = [...chatLogRef.current, { role: 'user', content: chatContents, deleted: false }];
+        chatLogRef.current = [...chatLogRef.current, { role: 'user', content: chatContents }];
         setChatLog(chatLogRef.current);
         setText("");
 
         (async () => {
-            const response = await fetch(`/api/conversation/${conversationId}/chat`, {
+            const response = await fetch(`/api/conversation/${conversationId}/message`, {
                 method: "POST",
                 body: JSON.stringify({
                     message: chatContents,
@@ -52,22 +70,24 @@ export default function ChatBox({ conversationId, initialChatLog, purpose } : {
             
             chatResponseRef.current = "";
             setChatResponse("");
-            setChatId(await response.json());
+            await response.text();
+            setPendingChat(true);
         })();
-    }, [ chatContents, setChatId, setChatContents, chatResponseRef, setChatResponse, chatLog, setChatLog ]);
+    }, [ setPendingChat, chatContents, setChatContents, chatResponseRef, setChatResponse, chatLog, setChatLog ]);
 
     useEffect(() => {
-        if (!chatId) return;
+        if (!pendingChat) return;
         if (!eventSource) {
-            const newEventSource = new EventSource(`/api/conversation/${conversationId}/chat/${chatId}`);
+            const newEventSource = new EventSource(`/api/conversation/${conversationId}/chat`);
             
             const end = () => {
-                chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current, deleted: false } ];
+                chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current } ];
                 newEventSource.close();
-                setChatId(""); 
+                setPendingChat(false);
                 setEventSource(null);
                 setChatLog(chatLogRef.current);
                 setChatResponse("");
+                queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
             };
             
             const eventListener = (event: MessageEvent) => {
@@ -86,9 +106,10 @@ export default function ChatBox({ conversationId, initialChatLog, purpose } : {
 
             newEventSource.addEventListener('message', eventListener);
             setEventSource(newEventSource);
+            setPendingChat(true);
             return;
         }
-    }, [ chatId, setChatId, eventSource, setEventSource, chatResponseRef, setChatResponse, chatLog, setChatLog ]);
+    }, [ setPendingChat, pendingChat, eventSource, setEventSource, chatResponseRef, setChatResponse, chatLog, setChatLog ]);
 
     useEffect(() => {
         scroller.current?.scrollTo(0, 999999999);

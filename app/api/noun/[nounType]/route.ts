@@ -1,8 +1,10 @@
 import { createMongoClient, getMongoDatabase } from "@/app/mongo";
 import { NextRequest, NextResponse } from "next/server";
-import { getUser } from "../../auth";
+import { getSessionToken, getUser } from "../../auth";
 import { v4 as uuid } from 'uuid';
 import { Noun } from "../noun";
+import { revalidateTag } from "next/cache";
+import { Conversation, getConversationCollection } from "../../conversation";
 
 export async function GET(request: NextRequest, { params: { nounType } } : { params: { nounType: string } }) {
     const user = await getUser();
@@ -27,31 +29,38 @@ export async function POST(request: NextRequest, { params: { nounType } } : { pa
     if (!user) {
         return NextResponse.json("Unauthorized", { status: 401 });
     }
-    
-    const nounInput = await request.json() as Noun;
-    if (!nounInput?.attributes || !nounInput?.name) {
-        return NextResponse.json("Bad Request", { status: 400 });
-    }
+    const sessionToken = getSessionToken();
 
     const mongoClient = createMongoClient();
     await mongoClient.connect();
     const db = getMongoDatabase(mongoClient);
     const nouns = db.collection<Noun>('nouns');
+    const conversations = getConversationCollection(mongoClient);
 
-    const existingNoun = await nouns.findOne({ userId: user.id, type: nounType, name: nounInput.name });
-    if (existingNoun) {
-        return NextResponse.json("Conflict", { status: 409 });
-    }
+    const conversation : Conversation = {
+        _id: uuid(),
+        userId: user.id,
+        messages: [
+            { role: 'system', content: `Prompt the user to create a new ${nounType}.` }
+        ]
+    };
+    await conversations.insertOne(conversation);
 
-    const noun = { 
-        ...nounInput,
+    const noun : Noun = { 
         _id: uuid(),
         userId: user.id, 
-        type: nounType 
-    }
+        type: nounType,
+        conversationId: conversation._id,
+        attributes: [],
+        name: `New ${nounType}`
+    };
 
     await nouns.insertOne(noun);
     await mongoClient.close();
+
+    revalidateTag(`conversation_${sessionToken}_${conversation._id}`);
+    revalidateTag(`noun_${sessionToken}_${nounType}_${noun._id}`);
+    revalidateTag(`noun_${sessionToken}_${nounType}`);
 
     return NextResponse.json(noun);
 }
