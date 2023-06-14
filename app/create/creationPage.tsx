@@ -54,7 +54,7 @@ export default function CreationPage({ pageName, children } : { pageName: string
                     </span>
                 </Link>
             </nav>
-            <section className="flex flex-row flex-grow w-full h-full">{children}</section>
+            <section className="flex flex-row flex-grow w-full h-full border-l-2 border-l-slate-500">{children}</section>
         </div>
     );
 }

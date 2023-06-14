@@ -3,14 +3,16 @@ import CreationPage from "../../creationPage";
 import ChatPanel from "../chatPanel";
 import { generateInitialState } from "../../state";
 import CreationPageWrapper from "../../wrapper";
+import { NounType } from "@/app/api/noun";
 
-export default async function Create({ params: { pageName, nounId } } : { params: { pageName: string, nounId: string } }){
+export default async function Create({ params: { pageName, nounId } } : { params: { pageName: NounType, nounId: string } }){
     const initialState = await generateInitialState({ pageName, nounId });
     const { sessionToken, nounType, noun } = initialState;
     
     if (!nounType || !sessionToken) {
         return notFound();
     }
+
     if (!noun) {
         return redirect(`/create/${nounType}`);
     }
@@ -18,7 +20,7 @@ export default async function Create({ params: { pageName, nounId } } : { params
     return(
         <CreationPage pageName={nounType}>
             <CreationPageWrapper initialState={initialState}>
-                <ChatPanel/>
+                <ChatPanel />
             </CreationPageWrapper>
         </CreationPage>
     )

@@ -21,15 +21,14 @@ const ChatBubble = ({ role, children } : { children: React.ReactNode, role: stri
     );
 }
 
-export default function ChatBox({ conversationId, purpose } : { 
-    conversationId: string, 
-    purpose: ConversationPurpose
+export default function ChatBox({ conversationId } : { 
+    conversationId: string
 }) {
     const [ text, setText ] = useState("");
     const [ chatContents, setChatContents ] = useState("");
     const [ eventSource, setEventSource ] = useState<EventSource | null>(null);
 
-    const { sessionToken, messages: remoteChatLog } = useCreationContext();
+    const { sessionToken, messages: remoteChatLog, nounType, noun } = useCreationContext();
     const chatLogRef = useRef(remoteChatLog);
     const [ chatLog, setChatLog ] = useState(remoteChatLog);
 
@@ -62,10 +61,7 @@ export default function ChatBox({ conversationId, purpose } : {
         (async () => {
             const response = await fetch(`/api/conversation/${conversationId}/message`, {
                 method: "POST",
-                body: JSON.stringify({
-                    message: chatContents,
-                    purpose
-                })
+                body: JSON.stringify(chatContents)
             });
             
             chatResponseRef.current = "";
@@ -93,6 +89,13 @@ export default function ChatBox({ conversationId, purpose } : {
             const eventListener = (event: MessageEvent) => {
                 try {
                     const data = JSON.parse(event.data);
+                    if (data.events) {
+                        if (data.events.includes('noun.update')) {
+                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
+                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
+                        }
+                        return;
+                    }
                     if (data.choices[0].finish_reason) {
                         return end();
                     }

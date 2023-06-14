@@ -1,66 +1,59 @@
-import { createMongoClient, getMongoDatabase } from "@/app/mongo";
+import { getMongoDatabase, mongo } from "@/app/mongo";
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionToken, getUser } from "../../auth";
+import { Session, authorize } from "../../auth";
 import { v4 as uuid } from 'uuid';
-import { Noun } from "../noun";
+import { Noun, NounType } from "../../noun";
 import { revalidateTag } from "next/cache";
 import { Conversation, getConversationCollection } from "../../conversation";
+import { MongoClient } from "mongodb";
 
-export async function GET(request: NextRequest, { params: { nounType } } : { params: { nounType: string } }) {
-    const user = await getUser();
-    if (!user) {
-        return NextResponse.json("Unauthorized", { status: 401 });
-    }
-
-    const mongoClient = createMongoClient();
-    await mongoClient.connect();
-
-    const db = getMongoDatabase(mongoClient);
-    const nouns = db.collection<Noun>('nouns');
+class Route {
+    @authorize
+    @mongo
+    async GET(request: NextRequest, { params: { nounType, session, mongoClient } } : { params: { nounType: NounType, session: Session, mongoClient: MongoClient} }) {    
+        const db = getMongoDatabase(mongoClient);
+        const nouns = db.collection<Noun>('nouns');
+        
+        const resultNouns = await nouns.find({ userId: session.user.id, type: nounType }).toArray();
     
-    const resultNouns = await nouns.find({ userId: user.id, type: nounType }).toArray();
-
-    await mongoClient.close();
-    return NextResponse.json(resultNouns);
-}
-
-export async function POST(request: NextRequest, { params: { nounType } } : { params: { nounType: string } }) {
-    const user = await getUser();
-    if (!user) {
-        return NextResponse.json("Unauthorized", { status: 401 });
+        return NextResponse.json(resultNouns);
     }
-    const sessionToken = getSessionToken();
 
-    const mongoClient = createMongoClient();
-    await mongoClient.connect();
-    const db = getMongoDatabase(mongoClient);
-    const nouns = db.collection<Noun>('nouns');
-    const conversations = getConversationCollection(mongoClient);
-
-    const conversation : Conversation = {
-        _id: uuid(),
-        userId: user.id,
-        messages: [
-            { role: 'system', content: `Prompt the user to create a new ${nounType}.` }
-        ]
-    };
-    await conversations.insertOne(conversation);
-
-    const noun : Noun = { 
-        _id: uuid(),
-        userId: user.id, 
-        type: nounType,
-        conversationId: conversation._id,
-        attributes: [],
-        name: `New ${nounType}`
-    };
-
-    await nouns.insertOne(noun);
-    await mongoClient.close();
-
-    revalidateTag(`conversation_${sessionToken}_${conversation._id}`);
-    revalidateTag(`noun_${sessionToken}_${nounType}_${noun._id}`);
-    revalidateTag(`noun_${sessionToken}_${nounType}`);
-
-    return NextResponse.json(noun);
+    @authorize
+    @mongo
+    async POST(request: NextRequest, { params: { nounType, session, mongoClient } } : { params: { nounType: NounType, session: Session, mongoClient: MongoClient} }) {
+        const db = getMongoDatabase(mongoClient);
+        const nouns = db.collection<Noun>('nouns');
+        const conversations = getConversationCollection(mongoClient);
+    
+        const conversation : Conversation = {
+            _id: uuid(),
+            userId: session.user.id,
+            purpose: {
+                context: nounType,
+                type: 'create'
+            },
+            messages: []
+        };
+        await conversations.insertOne(conversation);
+    
+        const noun : Noun = { 
+            _id: uuid(),
+            userId: session.user.id, 
+            type: nounType,
+            conversationId: conversation._id,
+            attributes: [],
+            name: `New ${nounType}`
+        };
+    
+        await nouns.insertOne(noun);
+    
+        revalidateTag(`conversation_${session.token}_${conversation._id}`);
+        revalidateTag(`noun_${session.token}_${nounType}_${noun._id}`);
+        revalidateTag(`noun_${session.token}_${nounType}`);
+    
+        return NextResponse.json(noun);
+    }
 }
+
+export const { GET, POST } = new Route();

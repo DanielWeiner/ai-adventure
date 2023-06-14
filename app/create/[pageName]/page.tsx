@@ -3,8 +3,9 @@ import CreationPage from "../creationPage";
 import ChatPanel from "./chatPanel";
 import CreationPageWrapper from "../wrapper";
 import { generateInitialState } from "../state";
+import { NounType } from "@/app/api/noun";
 
-export default async function Create({ params: { pageName  } } : { params: { pageName: string } }) {
+export default async function Create({ params: { pageName  } } : { params: { pageName: NounType } }) {
     const initialState = await generateInitialState({ pageName,  nounId: "" });
     const { sessionToken, nounType} = initialState;
     

@@ -1,31 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSessionToken, getUser } from "../auth";
+import { Session, authorize } from "../auth";
 import { v4 as uuid } from "uuid";
-import { Conversation, getConversationCollection } from "../conversation";
-import { createMongoClient } from "@/app/mongo";
+import { Conversation, ConversationPurpose, getConversationCollection } from "../conversation";
+import { mongo } from "@/app/mongo";
 import { revalidateTag } from "next/cache";
+import { MongoClient } from "mongodb";
 
-export async function POST(req: NextRequest) {
-    const user = await getUser();
-    if (!user) {
-        return NextResponse.json("Unauthorized", { status: 400 });
+class Route {
+    @authorize
+    @mongo
+    async POST(req: NextRequest, { params: { session, mongoClient } } : { params: { session: Session, mongoClient: MongoClient} }) {
+        const { purpose = null } = (await req.json() as { purpose: ConversationPurpose | null }) ?? { purpose: null };
+        if (!purpose?.context || !purpose?.type) {
+            return NextResponse.json("Bad Request", { status: 400 });
+        }
+    
+        const conversation : Conversation = {
+            _id: uuid(),
+            messages: [],
+            userId: session.user.id,
+            purpose
+        };
+    
+        const conversations = getConversationCollection(mongoClient);
+        await conversations.insertOne(conversation);
+    
+        revalidateTag(`conversation_${session.token}_${conversation._id}`);
+    
+        return NextResponse.json(conversation);
     }
-    const sessionToken = getSessionToken();
-
-    const conversation : Conversation = {
-        _id: uuid(),
-        messages: [],
-        userId: user.id
-    };
-
-    const mongoClient = createMongoClient();
-    await mongoClient.connect();
-    const conversations = getConversationCollection(mongoClient);
-
-    await conversations.insertOne(conversation);
-    await mongoClient.close();
-
-    revalidateTag(`conversation_${sessionToken}_${conversation._id}`);
-
-    return NextResponse.json(conversation);
 }
+
+export const { POST } = new Route();

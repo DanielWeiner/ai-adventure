@@ -1,51 +1,46 @@
-import { getSessionToken, getUser } from "@/app/api/auth";
+import { Session, authorize } from "@/app/api/auth";
 import { getConversationCollection, Message } from "@/app/api/conversation";
-import { createMongoClient } from "@/app/mongo";
+import { mongo } from "@/app/mongo";
+import { MongoClient } from "mongodb";
 import { revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
-export async function POST(req: NextRequest, { params: { conversationId } } : { params: { conversationId: string } }) {
-    const user = await getUser();
-    if (!user) {
-        return NextResponse.json("Unauthorized", { status: 401 });
-    }
-    const sessionToken = getSessionToken();
-
-    const { message } = await req.json();
-    if (!message) {
-        return NextResponse.json("Bad Request", { status: 400 });
-    }
-
-    const mongoClient = createMongoClient();
-    await mongoClient.connect();
-
-    const conversations = getConversationCollection(mongoClient);
-
-    const conversation = await conversations.findOne({ _id: conversationId });
-    if (!conversation) {
-        await mongoClient.close();
-        return NextResponse.json("Not Found", { status: 404 });
-    }
-
-    const newMessage : Message = {
-        content: message,
-        role: 'user'
-    };
-
-    await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });
+class Route {
+    @authorize
+    @mongo
+    async POST(req: NextRequest, { params: { conversationId, session, mongoClient } } : { params: { session: Session, conversationId: string, mongoClient: MongoClient } }) {
+        const message = await req.json();
+        if (!message) {
+            return NextResponse.json("Bad Request", { status: 400 });
+        }
     
-    revalidateTag(`conversation_${sessionToken}_${conversationId}`);
-
-    await mongoClient.close();
+        const conversations = getConversationCollection(mongoClient);
     
-    return NextResponse.json("ok");
+        const conversation = await conversations.findOne({ _id: conversationId });
+        if (!conversation) {
+            return NextResponse.json("Not Found", { status: 404 });
+        }
+    
+        const newMessage : Message = {
+            content: message,
+            role: 'user'
+        };
+    
+        await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });
+        
+        revalidateTag(`conversation_${session.token}_${conversationId}`);
+        
+        return NextResponse.json("ok");
+    }
+
+    @authorize
+    @mongo
+    async GET(_: NextRequest, { params: { conversationId, mongoClient, session } } : { params: { conversationId: string, session: Session, mongoClient: MongoClient } }) {
+        const conversationCollection = getConversationCollection(mongoClient);
+        const conversation = await conversationCollection.findOne({ _id: conversationId, userId: session.user.id });
+    
+        return NextResponse.json((conversation?.messages || []).filter(message => message.role !== 'system'));
+    }
 }
 
-export async function GET(_: NextRequest, { params: { conversationId } } : { params: { conversationId: string } }) {
-    const mongoClient = createMongoClient();
-    const conversationCollection = getConversationCollection(mongoClient);
-    const conversation = await conversationCollection.findOne({ _id: conversationId });
-    mongoClient.close();
-
-    return NextResponse.json((conversation?.messages || []).filter(message => message.role !== 'system'));
-}
+export const { GET, POST } = new Route();

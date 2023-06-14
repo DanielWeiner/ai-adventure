@@ -1,6 +1,6 @@
 'use client';
 
-import { Noun } from "@/app/api/noun/noun";
+import { Noun } from "@/app/api/noun";
 import ChatBox from "@/app/components/chatbox";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -40,7 +40,7 @@ export default function ChatPanel() {
     const createNounMutation = useMutation({
         mutationFn: createNoun,
         onSuccess: ({ _id: id }) => {
-            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
+            queryClient.invalidateQueries([ `noun_${sessionToken}_${nounType}` ]);
             router.push(`/create/${nounType}/${id}`);
         }
     });
@@ -48,13 +48,13 @@ export default function ChatPanel() {
     return (
         <>
             <section className="w-2/12">
-                <ul className="flex flex-col">
+                <ul className="flex flex-col align-middle items-center text-center">
                     {
                         nouns.map(({ name, _id: id }, i) => (
-                            <li key={i}><Link href={`/create/${nounType}/${id}`}>{name}</Link></li>
+                            <li className={`p-2 font-medium w-full ${ id === nounId ? 'bg-slate-400' : 'bg-slate-300' } border-b border-b-slate-400`} key={i}><Link href={`/create/${nounType}/${id}`}>{name}</Link></li>
                         ))
                     }
-                    <li key="new">
+                    <li key="new" className="p-2 w-full font-medium bg-slate-300">
                         <Link href="#" onClick={(e) => {
                             e.preventDefault();
                             createNounMutation.mutate(nounType)
@@ -65,17 +65,26 @@ export default function ChatPanel() {
             <section className="w-6/12">
                 {
                     noun ? 
-                    <ChatBox conversationId={noun.conversationId} purpose={{ context: nounType, type: 'create' }} />
-                    : <div className="flex flex-col justify-center items-center w-full max-h-full h-full bg-slate-200">
-                        <p className="text-center">
-                            Select a {nounType} from the panel on the left, or click "New {ucFirst(nounType)}" to create a new one.
-                        </p>
-                    </div>
+                        <ChatBox conversationId={noun.conversationId} /> 
+                        : 
+                        <div className="flex flex-col justify-center items-center w-full max-h-full h-full bg-slate-200">
+                            <p className="text-center">
+                                Select a {nounType} from the panel on the left, or click "New {ucFirst(nounType)}" to create a new one.
+                            </p>
+                        </div>
                 }
             </section>
 
             <section className="w-4/12">
-                
+                {noun ? <div>
+                    <p>{noun.name}</p>
+
+                    <ul>
+                        {
+                            noun.attributes.map((attr, i) => <p key={i}>{attr}</p>)
+                        }
+                    </ul>
+                </div>: null}
             </section>
         </>
     )

@@ -1,17 +1,16 @@
 import { getSessionToken } from "../api/auth";
 import { Message, getMessages } from "../api/conversation";
-import { getNoun, getNouns } from "../api/noun";
-import { Noun } from "../api/noun/noun";
+import { Noun, NounType, getNoun, getNouns } from "../api/noun";
 
 export interface CreationPageState {
     sessionToken: string;
-    nounType: string;
-    noun: Noun | null;
-    messages: Message[];
-    nouns: Noun[];
+    nounType:     NounType | "";
+    noun:         Noun | null;
+    messages:     Message[];
+    nouns:        Noun[];
 };
 
-export async function generateInitialState({ pageName, nounId } : { pageName: string, nounId: string }) : Promise<CreationPageState> {
+export async function generateInitialState({ pageName, nounId } : { pageName: NounType, nounId: string }) : Promise<CreationPageState> {
     const sessionToken = getSessionToken();
     if (!sessionToken) {
         return { sessionToken: "", nounType: "", noun: null, messages: [], nouns: [] };
@@ -25,11 +24,11 @@ export async function generateInitialState({ pageName, nounId } : { pageName: st
         return { sessionToken, nounType: pageName, noun: null, messages: [], nouns: [] };
     }
 
-    const [ nouns, noun ] = await Promise.all([ getNouns(pageName), getNoun(pageName, nounId) ]);
+    const [ nouns, noun ] = await Promise.all([ getNouns(sessionToken, pageName), getNoun(sessionToken, pageName, nounId) ]);
 
     if (!noun) {
         return { sessionToken, nounType: pageName, noun: null, nouns, messages: [] };
     }
 
-    return { sessionToken, nounType: pageName, noun, nouns, messages: await getMessages(noun.conversationId) };
+    return { sessionToken, nounType: pageName, noun, nouns, messages: await getMessages(sessionToken, noun.conversationId) };
 }
