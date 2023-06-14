@@ -1,4 +1,4 @@
-import { authorize, Session } from "@/app/api/auth";
+import { authorize, getSessionToken, Session } from "@/app/api/auth";
 import { mongo } from "@/app/mongo";
 import { IncomingMessage } from "http";
 import { revalidateTag } from "next/cache";
@@ -7,7 +7,7 @@ import { ChatCompletionRequestMessage, Configuration, OpenAIApi } from "openai";
 import { Readable } from "stream";
 import { ConversationContext, ConversationPurposeType, getConversationCollection, Message } from "../../../conversation";
 import { AxiosResponse } from "axios";
-import { NounType, getNounCollection } from "@/app/api/noun";
+import { NounType, getConversationNoun, getNounCollection } from "@/app/api/noun";
 import { MongoClient } from "mongodb";
 
 const defaultHeaders = {
@@ -34,9 +34,13 @@ type ContextPrompts = {
     [ConversationType in ConversationPurposeType]: (context: string) => string
 };
 
-type RelevantInfoPrompts = {
-    [ConversationType in ConversationPurposeType]: (context: string) => string
-};
+type RelevantInformation = {
+    name: string; 
+    attributesMap: { 
+        [key in string]: string;
+    }; 
+    attributes: string[];
+}
 
 type UserIntents = {
     [ConversationType in ConversationPurposeType]: {
@@ -54,8 +58,12 @@ const intents : UserIntents = {
             data: [`the name of the ${context}`]
         }),
         addAttribute: context => ({
-            description: `the user intented to add some additional information about the ${context}`,
-            data: [`six-word-maximum summaries for each of the ${context}'s additional attributes`]
+            description: `the user intented to add some additional information to the ${context}'s attributes`,
+            data: [`the new information, divided into minimal descriptors, without punctuation or pronouns`]
+        }),
+        removeAttribute: context => ({
+            description: `the user intended to remove items from the ${context}'s additional attributes`,
+            data: [`zero-indexed indices as strings, for each of the existing attribute to be deleted`]
         })
     },
     adventure:{}
@@ -71,45 +79,86 @@ const systemPrompts : ContextPrompts = {
     adventure: () => ''
 };
 
-
 function calculateIntentList<T extends ConversationPurposeType>(conversationType: T, context: ConversationContext[T]) {
     return [...Object.entries(intents[conversationType])].map(([intentName, intentFn]) => {
         const { data, description } = intentFn(context);        
         const suffix = data.map((str, i) => (i == 0 ? ' ' : '') + (i === data.length - 1 ? `and ${str}` : str)).join(', ');
-        return `If ${description}, output a JSON string array containing only the string "${intentName}"${suffix}.`
+        return `If ${description}, output a JSON array containing only the string "${intentName}"${suffix}.`
     }).join('\n')
 }
 
-async function detectIntent<T extends ConversationPurposeType>(openai: OpenAIApi, conversationType: T, context: ConversationContext[T], messages: ChatCompletionRequestMessage[]) : Promise<string[]> {
+function listRelevantInformation({ name, attributesMap, attributes} : RelevantInformation) {
+    return [
+        ...Object.keys(attributesMap).length ? [[
+            `Named attributes for ${name}:`,
+            ...[...Object.entries(attributesMap)].map(([key, val]) => `${key}: ${val}`),
+        ].join('\n')] : [],
+        ...attributes.length ? [[
+            `Additional attributes for ${name}:`,
+            ...attributes.map((val, i) => `${i + 1}. ${val}`)
+        ].join('\n')] : []
+    ].join('\n\n')
+}
+
+async function findRelevantInformation<T extends ConversationPurposeType>(conversationId: string, conversationType: T, context: ConversationContext[T]) : Promise<RelevantInformation> {
+    if (conversationType === 'adventure') {
+        return { name: '', attributesMap: {}, attributes: [] };
+    }
+    const noun = await getConversationNoun(getSessionToken()!, conversationId);
+
+    if (!noun) {
+        return { name: '', attributesMap: {}, attributes: [] };
+    }
+
+    return {
+        name: noun.name || `The ${context} being created`,
+        attributes: noun.attributes || [],
+        attributesMap: noun.namedAttributes || {}
+    };
+}
+
+async function detectIntent<T extends ConversationPurposeType>(
+    openai: OpenAIApi, 
+    conversationType: T, 
+    context: ConversationContext[T], 
+    messages: ChatCompletionRequestMessage[], 
+    relevantInfo: RelevantInformation
+) : Promise<string[]> {
     if (messages.length < 2) {
         return ['none'];
     }
     
-    const chatLog = messages.slice(0, -2).map(({ content, role }) => (`${role.toUpperCase()}: ${content}`));
-    const lastChatLog = messages.slice(-2).map(({ content, role }) => (`${role.toUpperCase()}: ${content}`));
-    
-    const messageContent = 'You are an intent classifier.' +
-        'You output the intent of the user\'s most recent message after analyzing a chat log. ' + 
-        'The output must only be JSON, with nothing before or after it. ' +
+    const fullChatLog = messages.slice(0, -2).map(({ content, role }) => (`${role.toUpperCase()}: ${content}`)).join('\n');
+    const lastChatLog = messages.slice(-2).map(({ content, role }) => (`${role.toUpperCase()}: ${content}`)).join('\n');
 
-        '\n\n'+
-        'The following are the possible intents:\n' +
+    const messageContent = 'You are an intent classifier. ' +
+        'You output the intent of the user\'s most recent message. ' +
+        'The output must only be valid JSON, with nothing before or after it. ' +
+
+        '\n'+
+        '\nThe following are the possible intents:\n' +
         calculateIntentList(conversationType, context) +
+        '\nIf the user\'s most recent message has no known intent, simply output ["none"]. ' +
         '\n' +
-        'If the user\'s most recent message has no known intent, simply output ["none"]. ' +
-        '\n\n' +
 
-        'Given the following chat history:' +
-        '\n\n[START CHAT HISTORY]\n' + 
-        chatLog.join('\n\n') +
-        '\n[END CHAT HISTORY]\n\n'  + 
+        '\nGiven the following previous chat log:' + 
+        '\n[START CHAT LOG]\n' + 
+        fullChatLog +
+        '\n[END CHAT LOG]\n' +
 
-        'Analyze the user\'s intent after the following interaction: ' + 
-        '\n\n[START INTERACTION]\n' +
+        '\nAnd the following relevant, up-to-date information:' + 
+        '\n[START RELEVANT INFORMATION]\n' + 
+        listRelevantInformation(relevantInfo) +
+        '\n[END RELEVANT INFORMATION]\n' +
+
+        '\nAnalyze the user\'s intent after the following interaction:' + 
+        '\n[START INTERACTION]\n' +
         lastChatLog +
-        '\n[END INTERACTION]\n\n' +
+        '\n[END INTERACTION]\n' +
+
+        '\nOnly the last user message should be considered for intent.\n' +
         
-        'Intent of the user\'s last message: ';
+        '\nIntent of the user\'s last message: ';
     
     const result = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
@@ -137,6 +186,10 @@ async function processChatIntents(mongoClient: MongoClient, conversationId: stri
 
     if (intentName === 'addAttribute') {
         return addAttributes(mongoClient, conversationId, intentData);
+    }
+
+    if (intentName === 'removeAttribute') {
+        return removeAttributes(mongoClient, conversationId, intentData);
     }
 
     return [];
@@ -168,6 +221,27 @@ async function addAttributes(mongoClient: MongoClient, conversationId: string, a
     return ['noun.update'];
 }
 
+async function removeAttributes(mongoClient: MongoClient, conversationId: string, indices: string[]) {
+    const nouns = getNounCollection(mongoClient);
+
+    const noun = await nouns.findOne({ conversationId });
+    if (!noun) {
+        return [];
+    }
+
+    const attrs = indices.reduce((attrs, index) => {
+        return {
+            ...attrs,
+            [`attributes.${index}`]: 1
+        }
+    }, {});
+
+    await nouns.updateOne({ conversationId }, { $unset: { ...attrs } });
+    await nouns.updateOne({ conversationId }, { $pull: { attributes: null as any } });
+
+    return ['noun.update'];
+}
+
 class Route {
     @authorize
     @mongo
@@ -183,11 +257,13 @@ class Route {
     
         const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
         const openai = new OpenAIApi(configuration);
-    
+
         const openaiMessages = messages.map(({ role, content }) => ({ role, content }));
     
-        const intent = await detectIntent(openai, purpose.type, purpose.context, openaiMessages);
+        const relevantInfo = await findRelevantInformation(conversationId, purpose.type, purpose.context);
+        const intent = await detectIntent(openai, purpose.type, purpose.context, openaiMessages, relevantInfo);
         const events = await processChatIntents(mongoClient, conversationId, ...intent as [string]);
+        const relevantInfoString = listRelevantInformation(relevantInfo);
     
         const { data: stream } = await openai.createChatCompletion({
             model: "gpt-3.5-turbo",
@@ -195,11 +271,14 @@ class Route {
             stream: true,
             messages: [
                 { role: 'system', content: systemPrompts[purpose.type](purpose.context) },
-                ...openaiMessages
+                ...openaiMessages,
+                ...relevantInfoString ? [
+                    { role: 'system', content: relevantInfoString } as const
+                ] : []
             ]
         }, { responseType: 'stream' }) as any as AxiosResponse<IncomingMessage>;
     
-        const newMessage = { role: 'assistant', content: '', deleted: false } as Message;
+        const newMessage = { role: 'assistant', content: '' } as Message;
         
         async function* mergedStream() {
             yield new TextEncoder().encode(`data: ${JSON.stringify({ events })}\n\n`);

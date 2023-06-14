@@ -1,18 +1,20 @@
 import { cookies } from "next/headers";
 import { apiUrl } from "./api";
-import { getSessionToken } from "./auth";
 import { Collection, MongoClient } from "mongodb";
 import { getMongoDatabase } from "../mongo";
 
 export type NounType = 'class' | 'character' | 'faction' | 'location' | 'species' | 'world';
 
 export interface Noun {
-    _id:            string;
-    userId:         string;
-    conversationId: string;
-    type:           NounType;
-    name:           string;
-    attributes:     string[];
+    _id:             string;
+    userId:          string;
+    conversationId:  string;
+    type:            NounType;
+    name:            string;
+    attributes:      string[];
+    namedAttributes: {
+        [key in string]: string
+    };
 }
 
 export function getNounCollection(mongoClient: MongoClient) : Collection<Noun> {

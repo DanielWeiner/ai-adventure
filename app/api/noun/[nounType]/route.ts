@@ -43,7 +43,8 @@ class Route {
             type: nounType,
             conversationId: conversation._id,
             attributes: [],
-            name: `New ${nounType}`
+            namedAttributes: {},
+            name: ''
         };
     
         await nouns.insertOne(noun);

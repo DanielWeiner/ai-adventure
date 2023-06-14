@@ -51,7 +51,7 @@ export default function ChatPanel() {
                 <ul className="flex flex-col align-middle items-center text-center">
                     {
                         nouns.map(({ name, _id: id }, i) => (
-                            <li className={`p-2 font-medium w-full ${ id === nounId ? 'bg-slate-400' : 'bg-slate-300' } border-b border-b-slate-400`} key={i}><Link href={`/create/${nounType}/${id}`}>{name}</Link></li>
+                            <li className={`p-2 font-medium w-full ${ id === nounId ? 'bg-slate-400' : 'bg-slate-300' } border-b border-b-slate-400`} key={i}><Link href={`/create/${nounType}/${id}`}>{name || <span className="text-slate-600 italic">new {nounType}</span>}</Link></li>
                         ))
                     }
                     <li key="new" className="p-2 w-full font-medium bg-slate-300">
@@ -77,7 +77,7 @@ export default function ChatPanel() {
 
             <section className="w-4/12">
                 {noun ? <div>
-                    <p>{noun.name}</p>
+                    <p>{noun.name || <span className="text-slate-600">New {nounType}</span>}</p>
 
                     <ul>
                         {
