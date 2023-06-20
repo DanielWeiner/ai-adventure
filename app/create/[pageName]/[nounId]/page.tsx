@@ -17,7 +17,7 @@ export default async function Create({ params: { pageName, nounId } } : { params
         return redirect(`/create/${nounType}`);
     }
 
-    return(
+    return (
         <CreationPage pageName={nounType}>
             <CreationPageWrapper initialState={initialState}>
                 <ChatPanel />

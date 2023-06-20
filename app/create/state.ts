@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { getSessionToken } from "../api/auth";
 import { Message, getMessages } from "../api/conversation";
 import { Noun, NounType, getNoun, getNouns } from "../api/noun";
@@ -13,6 +14,7 @@ export interface CreationPageState {
 export async function generateInitialState({ pageName, nounId } : { pageName: NounType, nounId: string }) : Promise<CreationPageState> {
     const sessionToken = getSessionToken();
     if (!sessionToken) {
+        console.log(cookies().toString());
         return { sessionToken: "", nounType: "", noun: null, messages: [], nouns: [] };
     }
 
