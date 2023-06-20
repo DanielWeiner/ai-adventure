@@ -69,7 +69,7 @@ export default function ChatBox({ conversationId } : {
             await response.text();
             setPendingChat(true);
         })();
-    }, [ setPendingChat, chatContents, setChatContents, chatResponseRef, setChatResponse, chatLog, setChatLog ]);
+    }, [ setPendingChat, chatContents, setChatContents, chatResponseRef, setChatResponse, chatLog, setChatLog, conversationId ]);
 
     useEffect(() => {
         if (!pendingChat) return;
@@ -112,7 +112,7 @@ export default function ChatBox({ conversationId } : {
             setPendingChat(true);
             return;
         }
-    }, [ setPendingChat, pendingChat, eventSource, setEventSource, chatResponseRef, setChatResponse, chatLog, setChatLog ]);
+    }, [ setPendingChat, pendingChat, eventSource, setEventSource, chatResponseRef, setChatResponse, chatLog, setChatLog, conversationId, noun?._id, nounType, queryClient, sessionToken]);
 
     useEffect(() => {
         scroller.current?.scrollTo(0, 999999999);

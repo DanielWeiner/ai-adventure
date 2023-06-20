@@ -32,6 +32,7 @@ export default function Header({ userName, userImage, loggedIn }: { userName: st
                             {loggedIn ?
                                 <>
                                     <button id="hs-dropdown-custom-trigger" type="button" className="hs-dropdown-toggle py-1 pl-1 pr-3 inline-flex justify-center items-center gap-2 rounded-full border font-medium bg-white text-gray-700 shadow-sm align-middle hover:bg-gray-50  transition-all text-sm dark:bg-gray-800 dark:hover:bg-gray-800 dark:border-gray-700 dark:text-gray-400 dark:hover:text-white">
+                                        { /* eslint-disable-next-line */}
                                         <img className="w-6 h-auto rounded-full" src={userImage} alt={userName} />
                                         <span className="text-gray-600 font-medium truncate max-w-[7.5rem] dark:text-gray-400">{userName}</span>
                                         <svg className="hs-dropdown-open:rotate-180 w-2.5 h-2.5 text-gray-600" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">

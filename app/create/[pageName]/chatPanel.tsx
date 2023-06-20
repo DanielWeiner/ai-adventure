@@ -109,7 +109,7 @@ export default function ChatPanel() {
                         : 
                         <div className="flex flex-col justify-center items-center w-full max-h-full h-full bg-slate-200">
                             <p className="text-center">
-                                Select a {nounType} from the panel on the left, or click "New {ucFirst(nounType)}" to create a new one.
+                                Select a {nounType} from the panel on the left, or click &quot;New {ucFirst(nounType)}&quot; to create a new one.
                             </p>
                         </div>
                 }
