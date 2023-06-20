@@ -156,7 +156,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
         'Each sentence must only contain one piece of information. ' +
         'Enumerate all information referenced by the user explicitly as part of the output, as well as new information provided by the user. ' + 
         'Write multiple sentences for compound information.\n' +
-        `Here\'s the user response to the assistant regarding the ${relevantInfo}.`+
+        `Here\'s the user\'s response to the assistant regarding the ${relevantInfo.type}.`+
         '\n[START USER RESPONSE]\n' +
         lastUserPrompt +
         '\n[END USER RESPONSE]';
