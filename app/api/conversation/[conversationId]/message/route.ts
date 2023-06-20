@@ -2,7 +2,6 @@ import { Session, authorize } from "@/app/api/auth";
 import { getConversationCollection, Message } from "@/app/api/conversation";
 import { mongo } from "@/app/mongo";
 import { MongoClient } from "mongodb";
-import { revalidateTag } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 class Route {
@@ -16,7 +15,7 @@ class Route {
     
         const conversations = getConversationCollection(mongoClient);
     
-        const conversation = await conversations.findOne({ _id: conversationId });
+        const conversation = await conversations.findOne({ _id: conversationId, userId: session.user.id });
         if (!conversation) {
             return NextResponse.json("Not Found", { status: 404 });
         }
@@ -27,9 +26,7 @@ class Route {
         };
     
         await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });
-        
-        revalidateTag(`conversation_${session.token}_${conversationId}`);
-        
+                
         return NextResponse.json("ok");
     }
 

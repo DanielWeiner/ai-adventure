@@ -7,6 +7,7 @@ services:
       - $MONGO_PORT:$MONGO_PORT
     volumes:
       - ./data/db:/data/db
+      - ./docker-entrypoint-initdb.d/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
   app:
     image: node:18
     working_dir: /home/node/app
@@ -22,3 +23,4 @@ services:
     command: npm run dev
     links:
       - db
+    user: $USER_GROUP

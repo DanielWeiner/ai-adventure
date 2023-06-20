@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Noun, NounType } from "../../../noun";
 import { revalidateTag } from "next/cache";
 import { MongoClient } from "mongodb";
+import { Conversation } from "@/app/api/conversation";
 
 class Route {
     @authorize
@@ -19,6 +20,24 @@ class Route {
         }
     
         return NextResponse.json(noun);
+    }
+
+    @authorize
+    @mongo
+    async DELETE(request: NextRequest, { params: { nounType, nounId, session, mongoClient } } : { params: { session: Session, nounType: NounType, nounId: string, mongoClient: MongoClient } }) {
+        const db = getMongoDatabase(mongoClient);
+        const nouns = db.collection<Noun>('nouns');
+        const conversations = db.collection<Conversation>('conversations');
+    
+        const existingNoun = await nouns.findOne({ _id: nounId, userId: session.user.id, type: nounType });
+        if (!existingNoun) {
+            return NextResponse.json("Not Found", { status: 404 });
+        }
+
+        await conversations.deleteOne({ _id: existingNoun.conversationId });
+        await nouns.deleteOne({ _id: nounId });
+        
+        return NextResponse.json("ok");
     }
 
     @authorize
@@ -46,11 +65,8 @@ class Route {
     
         await nouns.replaceOne({ _id: nounId }, noun);
     
-        revalidateTag(`noun_${session.token}_${nounType}_${noun._id}`);
-        revalidateTag(`noun_${session.token}_${nounType}`);
-    
         return NextResponse.json(noun);
     }
 }
 
-export const { GET, PUT } = new Route();
+export const { GET, PUT, DELETE } = new Route();

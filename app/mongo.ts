@@ -7,10 +7,11 @@ const {
     MONGO_DB,
     MONGO_HOST,
     MONGO_PORT,
-    MONGO_AUTH_DB
+    MONGO_AUTH_DB,
+    MONGODB_URI
 } = process.env;
 
-const mongoConnectionString = `mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@${MONGO_HOST}:${MONGO_PORT}`;
+const mongoConnectionString = MONGODB_URI || `mongodb://${MONGO_USERNAME}:${encodeURIComponent(MONGO_PASSWORD || '')}@${MONGO_HOST}:${MONGO_PORT}`;
 
 export function createMongoClient() {
     return new MongoClient(mongoConnectionString);

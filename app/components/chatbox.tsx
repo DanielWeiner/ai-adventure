@@ -90,19 +90,19 @@ export default function ChatBox({ conversationId } : {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.events) {
-                        if (data.events.includes('noun.update')) {
+                        if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
                             queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
                             queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
                         }
                         return;
                     }
-                    if (data.choices[0].finish_reason) {
+                    if (data.done) {
                         return end();
                     }
+
                     chatResponseRef.current += data.choices[0].delta.content || "";
                     setChatResponse(chatResponseRef.current);
                 } catch(e) {
-                    console.error(e);
                     return end();
                 }
             };

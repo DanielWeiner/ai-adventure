@@ -49,10 +49,6 @@ class Route {
     
         await nouns.insertOne(noun);
     
-        revalidateTag(`conversation_${session.token}_${conversation._id}`);
-        revalidateTag(`noun_${session.token}_${nounType}_${noun._id}`);
-        revalidateTag(`noun_${session.token}_${nounType}`);
-    
         return NextResponse.json(noun);
     }
 }

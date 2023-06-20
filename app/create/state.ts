@@ -24,7 +24,10 @@ export async function generateInitialState({ pageName, nounId } : { pageName: No
         return { sessionToken, nounType: pageName, noun: null, messages: [], nouns: [] };
     }
 
-    const [ nouns, noun ] = await Promise.all([ getNouns(sessionToken, pageName), getNoun(sessionToken, pageName, nounId) ]);
+    const [ nouns, noun ] = await Promise.all([ 
+        getNouns(pageName), 
+        getNoun(pageName, nounId).catch(() => null)
+    ]);
 
     if (!noun) {
         return { sessionToken, nounType: pageName, noun: null, nouns, messages: [] };

@@ -40,9 +40,7 @@ export async function getMessages(sessionToken: string, conversationId: string) 
         headers: {
             Cookie: cookies().toString()
         },
-        next: { 
-            tags: [ `conversation_${sessionToken}_${conversationId}` ] 
-        }
+        cache: 'no-cache'
     });
 
     return response.json();

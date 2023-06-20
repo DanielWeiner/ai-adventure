@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { apiUrl } from "./api";
 import { Collection, MongoClient } from "mongodb";
 import { getMongoDatabase } from "../mongo";
+import { RequestInit } from "next/dist/server/web/spec-extension/request";
 
 export type NounType = 'class' | 'character' | 'faction' | 'location' | 'species' | 'world';
 
@@ -21,35 +22,22 @@ export function getNounCollection(mongoClient: MongoClient) : Collection<Noun> {
     return getMongoDatabase(mongoClient).collection<Noun>('nouns');
 }
 
-export async function getNouns(sessionToken: string, nounType: NounType) : Promise<Noun[]> {
-    const response = await fetch(apiUrl(`noun/${nounType}`), {
+const fetchJson = async <T>(url: string, options?: RequestInit) : Promise<T> => {
+    const response = await fetch(apiUrl(url), {
         headers: {
             Cookie: cookies().toString()
         },
-        next: { tags: [`noun_${sessionToken}_${nounType}`] } 
+        cache: 'no-cache',
+        ...options
     });
+
+    if (response.status >= 400) {
+        throw new Error(await response.json());
+    }
 
     return response.json();
 }
 
-export async function getNoun(sessionToken: string, nounType: NounType, nounId: string) : Promise<Noun | null> {
-    const response = await fetch(apiUrl(`noun/${nounType}/${nounId}`), {
-        headers: {
-            Cookie: cookies().toString()
-        },
-        next: { tags: [`noun_${sessionToken}_${nounType}_${nounId}`] } 
-    });
-
-    return response.json();
-}
-
-export async function getConversationNoun(sessionToken: string, conversationId: string) : Promise<Noun | null> {
-    const response = await fetch(apiUrl(`conversation/${conversationId}/noun`), {
-        headers: {
-            Cookie: cookies().toString()
-        },
-        next: { tags: [`conversationNoun_${sessionToken}_${conversationId}`] } 
-    });
-
-    return response.json();
-}
+export const getNouns = (nounType: NounType) => fetchJson<Noun[]>(`noun/${nounType}`);
+export const getNoun = (nounType: NounType, nounId: string) => fetchJson<Noun | null>(`noun/${nounType}/${nounId}`);
+export const getConversationNoun = (conversationId: string) => fetchJson<Noun | null>(`conversation/${conversationId}/noun`);

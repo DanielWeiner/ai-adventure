@@ -24,9 +24,7 @@ class Route {
     
         const conversations = getConversationCollection(mongoClient);
         await conversations.insertOne(conversation);
-    
-        revalidateTag(`conversation_${session.token}_${conversation._id}`);
-    
+        
         return NextResponse.json(conversation);
     }
 }
