@@ -10,7 +10,6 @@ export default async function Create({ params: { pageName  } } : { params: { pag
     const { sessionToken, nounType} = initialState;
     
     if (!nounType || !sessionToken) {
-        console.log('Whoops', nounType, sessionToken);
         return notFound();
     }
 

@@ -14,7 +14,6 @@ export interface CreationPageState {
 export async function generateInitialState({ pageName, nounId } : { pageName: NounType, nounId: string }) : Promise<CreationPageState> {
     const sessionToken = getSessionToken();
     if (!sessionToken) {
-        console.log(cookies().toString());
         return { sessionToken: "", nounType: "", noun: null, messages: [], nouns: [] };
     }
 

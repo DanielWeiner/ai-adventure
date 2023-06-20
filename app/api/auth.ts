@@ -59,7 +59,7 @@ async function getDbUser(userId: string | null) {
 }
 
 export function getSessionToken() : string | null {
-    return cookies().get('next-auth.session-token')?.value || null;
+    return cookies().get('next-auth.session-token')?.value || cookies().get('__Secure-next-auth.session-token')?.value || null;
 }
 
 export async function getSession() : Promise<Session | null> {
