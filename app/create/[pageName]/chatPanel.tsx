@@ -72,7 +72,7 @@ export default function ChatPanel() {
     });
 
     return (
-        <>
+        <div className="flex flex-row flex-grow w-full h-full border-l-2 border-l-slate-500">
             <section className="w-2/12">
                 <ul className="flex flex-col align-middle items-center text-center">
                     {
@@ -128,7 +128,7 @@ export default function ChatPanel() {
                     </ul>
                 </div>: null}
             </section>
-        </>
+        </div>
     )
 }
 
