@@ -2,8 +2,7 @@ import './globals.css';
 import React from 'react';
 import Header from './header';
 import Main from './main';
-import { getServerSession } from 'next-auth';
-import { authOptions } from './api/auth/[...nextauth]/route';
+import { getSession } from './api/auth';
 
 export const metadata = {
   title: 'AI Adventure',
@@ -11,7 +10,7 @@ export const metadata = {
 };
 
 export default async function RootLayout({ children } : { children : React.ReactNode }) {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   const userName = session?.user?.name || "";
   const userEmail = session?.user?.email || "";
   const userImage = session?.user?.image || "";
