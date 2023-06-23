@@ -83,8 +83,8 @@ export default function ChatPanel() {
 
     return (
         <div className="flex flex-row flex-grow w-full h-full border-l-2 border-l-slate-500">
-            <section className="w-8/12 relative">
-                <div className="absolute top-0 left-0 right-0 flex flex-row px-5 justify-center items-center shadow-md bg-slate-300 py-2">
+            <section className="w-8/12 flex flex-col h-full max-h-full">
+                <div className="flex flex-row px-5 justify-center items-center shadow-md bg-slate-300 py-2">
                     { nouns.length > 0 ? <Combobox value={noun} onChange={(newNoun) => {
                         if (!newNoun) return;
                         router.push(`/create/${nounType}/${newNoun._id}`)
@@ -118,7 +118,7 @@ export default function ChatPanel() {
                                 }}
                             >
                                 <Combobox.Options 
-                                    className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+                                    className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm z-[1]"
                                 >
                                     {
                                         filteredNouns.length === 0 && nounQuery !== '' ? (
@@ -184,16 +184,19 @@ export default function ChatPanel() {
                         <PlusIcon size="2rem" className="text-green-600 rounded-full shadow-md mt-1 bg-white" />
                     </Link>
                 </div>
-                {
-                    noun ? 
-                        <ChatBox conversationId={noun.conversationId} /> 
-                        : 
-                        <div className="flex flex-col justify-center items-center w-full max-h-full h-full bg-slate-200">
-                            <p className="text-center">
-                                Select a {nounType} from the panel on the left, or click &quot;New {ucFirst(nounType)}&quot; to create a new one.
-                            </p>
-                        </div>
-                }
+                <div className="flex-grow relative">
+                    {
+                        noun ? 
+                            <ChatBox conversationId={noun.conversationId} /> 
+                            : 
+                            <div className="flex flex-col justify-center items-center w-full max-h-full h-full bg-slate-200">
+                                <p className="text-center">
+                                    Select a {nounType} from the panel on the left, or click &quot;New {ucFirst(nounType)}&quot; to create a new one.
+                                </p>
+                            </div>
+                    }
+                </div>
+                
             </section>
 
             <section className="w-4/12">
