@@ -84,7 +84,7 @@ export default function ChatPanel() {
     return (
         <div className="flex flex-row flex-grow w-full h-full border-l-2 border-l-slate-500">
             <section className="w-8/12 flex flex-col h-full max-h-full">
-                <div className="flex flex-row px-5 justify-center items-center shadow-md bg-slate-300 py-2">
+                <div className="flex flex-row px-5 justify-center items-center z-[1] shadow-md bg-slate-300 py-2">
                     { nouns.length > 0 ? <Combobox value={noun} onChange={(newNoun) => {
                         if (!newNoun) return;
                         router.push(`/create/${nounType}/${newNoun._id}`)
@@ -118,7 +118,7 @@ export default function ChatPanel() {
                                 }}
                             >
                                 <Combobox.Options 
-                                    className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm z-[1]"
+                                    className="absolute mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
                                 >
                                     {
                                         filteredNouns.length === 0 && nounQuery !== '' ? (
