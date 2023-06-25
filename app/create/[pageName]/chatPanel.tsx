@@ -207,7 +207,7 @@ export default function ChatPanel() {
                     <LeftChevronIcon className={`transition-transform duration-150 ${drawerOpen ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="1rem"/>
                 </div>
             </div>
-            <section className="lg:w-4/12 max-lg:w-[calc(100vw-2px)] bg-slate-100 z-10">
+            <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem-2px)] bg-slate-100 z-10">
                 {noun ? <div>
                     <p className="text-center font-bold text-xl py-2">{noun.name || <span className="text-slate-600 italic font-medium">unnamed {nounType}</span>}</p>
                     <div className="flex justify-center w-full mt-5">{ icons[nounType as NounType]('100') }</div>
