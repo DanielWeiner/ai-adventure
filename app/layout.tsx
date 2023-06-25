@@ -18,7 +18,7 @@ export default async function RootLayout({ children } : { children : React.React
 
   return (
     <html lang="en">
-      <body className={`flex flex-col max-h-screen min-h-screen h-screen bg-slate-100`}>
+      <body className={`flex flex-col h-full min-h-full max-h-full bg-slate-100`}>
         <Header loggedIn={loggedIn} userName={userName} userImage={userImage}/>
         <Main>
           {children}

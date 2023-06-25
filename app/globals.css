@@ -19,3 +19,11 @@
 body {
   background: rgb(var(--background-rgb));
 }
+
+html,body {
+  overflow-x: hidden;
+}
+
+html {
+  height: 100%;
+}
