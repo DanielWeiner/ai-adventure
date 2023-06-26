@@ -150,7 +150,7 @@ export default function ChatBox({ conversationId } : {
                         placeholder="Say something..."
                         onChange={ input => setText(input.target.value) }/>
                     <button type="submit" className="flex bg-indigo-500 h-12 w-12 min-w-[3rem] lg:[border-bottom-right-radius:0.375rem] text-white justify-center items-center">
-                        <SendIcon size="1.5rem" />
+                        <SendIcon size="1.5rem" className="-mb-1" />
                     </button>
             </form>
         </section>

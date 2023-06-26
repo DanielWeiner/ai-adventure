@@ -86,9 +86,9 @@ export default function ChatPanel() {
 
     return (
         <div 
-            className={`flex flex-row flex-grow w-screen max-lg:w-[200vw] h-full border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${drawerOpen? 'max-lg:[margin-left:calc(-100vw+1rem)]' : ''}`}
+            className={`flex flex-row flex-grow w-screen max-lg:w-[200vw] h-full lg:border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${drawerOpen? 'max-lg:[margin-left:calc(1rem-100vw)]' : ''}`}
         >
-            <div className="lg:w-8/12 max-lg:w-screen flex flex-row h-full max-h-full">
+            <div className="lg:w-8/12 max-lg:w-[calc(100vw-1rem)] flex flex-row h-full max-h-full">
                 <section className="flex flex-grow flex-col h-full max-h-full">
                     <div className="flex flex-row px-5 justify-center items-center z-[1] shadow-md bg-slate-300 py-2">
                         { nouns.length > 0 ? <Combobox value={noun} onChange={(newNoun) => {
@@ -203,9 +203,13 @@ export default function ChatPanel() {
                         }
                     </div>
                 </section>
-                <div onClick={() => setDrawerOpen(drawerOpen => !drawerOpen)} className="lg:hidden cursor-pointer flex flex-col h-full max-h-full justify-center bg-slate-400 text-white shadow-md border-x-slate-700 border-x-2">
-                    <LeftChevronIcon className={`transition-transform duration-150 ${drawerOpen ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="1rem"/>
-                </div>
+                
+            </div>
+            <div 
+                onClick={() => setDrawerOpen(drawerOpen => !drawerOpen)} 
+                className="lg:hidden cursor-pointer flex flex-col h-full max-h-full justify-center bg-slate-400 text-white w-4"
+            >
+                <LeftChevronIcon className={`transition-transform duration-150 ${drawerOpen ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="auto"/>
             </div>
             <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem)] bg-slate-100 z-10">
                 {noun ? <div>
