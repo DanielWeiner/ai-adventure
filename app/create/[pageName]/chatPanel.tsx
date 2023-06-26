@@ -207,11 +207,11 @@ export default function ChatPanel() {
             </div>
             <div 
                 onClick={() => setDrawerOpen(drawerOpen => !drawerOpen)} 
-                className="lg:hidden cursor-pointer flex flex-col h-full max-h-full justify-center bg-slate-400 text-white w-4"
+                className="lg:hidden cursor-pointer flex flex-col h-full max-h-full justify-center bg-slate-400 text-white w-4 shadow-lg z-10"
             >
                 <LeftChevronIcon className={`transition-transform duration-150 ${drawerOpen ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="auto"/>
             </div>
-            <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem)] bg-slate-100 z-10">
+            <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem)] bg-slate-100">
                 {noun ? <div>
                     <p className="text-center font-bold text-xl py-2">{noun.name || <span className="text-slate-600 italic font-medium">unnamed {nounType}</span>}</p>
                     <div className="flex justify-center w-full mt-5">{ icons[nounType as NounType]('100') }</div>

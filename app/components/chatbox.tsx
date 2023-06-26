@@ -121,7 +121,7 @@ export default function ChatBox({ conversationId } : {
 
     return (
         <section className="flex flex-col absolute top-0 left-0 right-0 bottom-0">
-            <div className="rounded-sm flex-grow overflow-hidden flex flex-col items-stretch shadow-md [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
+            <div className="rounded-sm flex-grow overflow-hidden flex flex-col items-stretch [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
                     <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3 ${chatLog.length === 0 && !chatResponse ? 'justify-center' : 'justify-end' }`}>
                         {
@@ -145,7 +145,7 @@ export default function ChatBox({ conversationId } : {
                 }>
                     <input 
                         type="text"
-                        className="block flex-grow min-w-0 h-12 text-md border-0 py-1.5 [border-bottom-left-radius:0.375rem] text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600" 
+                        className="block flex-grow min-w-0 h-12 text-md border-0 py-1.5 lg:[border-bottom-left-radius:0.375rem] text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600" 
                         value={ text }
                         placeholder="Say something..."
                         onChange={ input => setText(input.target.value) }/>
