@@ -7,9 +7,9 @@ import { NounType } from "@/app/api/noun";
 
 export default async function Create({ params: { pageName  } } : { params: { pageName: NounType } }) {
     const initialState = await generateInitialState({ pageName,  nounId: "" });
-    const { sessionToken, nounType} = initialState;
+    const { nounType} = initialState;
     
-    if (!nounType || !sessionToken) {
+    if (!nounType) {
         return notFound();
     }
 

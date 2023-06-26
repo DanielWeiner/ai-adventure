@@ -1,4 +1,3 @@
-import { cookies } from "next/headers";
 import { getSessionToken } from "../api/auth";
 import { Message, getMessages } from "../api/conversation";
 import { Noun, NounType, getNoun, getNouns } from "../api/noun";
@@ -13,14 +12,14 @@ export interface CreationPageState {
 
 export async function generateInitialState({ pageName, nounId } : { pageName: NounType, nounId: string }) : Promise<CreationPageState> {
     const sessionToken = getSessionToken();
-    if (!sessionToken) {
-        return { sessionToken: "", nounType: "", noun: null, messages: [], nouns: [] };
+    if (!['character', 'class', 'faction', 'location', 'species', 'world'].includes(pageName)) {
+        return { sessionToken: sessionToken || "", nounType: "", noun: null, messages: [], nouns: [] };
     }
 
-    if (!['character', 'class', 'faction', 'location', 'species', 'world'].includes(pageName)) {
-        return { sessionToken, nounType: "", noun: null, messages: [], nouns: [] };
+    if (!sessionToken) {
+        return { sessionToken: "", nounType: pageName, noun: null, messages: [], nouns: [] };
     }
-    
+
     if (!nounId) {
         return { sessionToken, nounType: pageName, noun: null, messages: [], nouns: [] };
     }

@@ -40,6 +40,15 @@ export default function ChatPanel() {
     const router = useRouter();
     const queryClient = useQueryClient();
     const { sessionToken, nounType, nouns: initialNouns, noun: initialNoun } = useCreationContext();
+
+    if (!sessionToken) {
+        return (
+            <div className="w-full h-full flex justify-center items-center">
+                <span>Please log in to start creating.</span>
+            </div>
+        );
+    }
+    
     const [nounQuery, setNounQuery] = useState('');
     const [detailsShown, setDetailsShown] = useState(false);
     const swipeableHandlers = useSwipeable({
@@ -105,7 +114,7 @@ export default function ChatPanel() {
                             if (!newNoun) return;
                             router.push(`/create/${nounType}/${newNoun._id}`)
                         }} >
-                            <div className="relative mt-1 flex-grow pr-5">
+                            <div className="relative mt-1 flex-grow mr-5">
                                 <div className="relative w-full cursor-default overflow-hidden rounded-lg bg-white text-left shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75 focus-visible:ring-offset-2 focus-visible:ring-offset-teal-300 sm:text-sm">
                                     <Combobox.Input 
                                         ref={inputElement}
@@ -207,7 +216,7 @@ export default function ChatPanel() {
                                 : 
                                 <div className="flex flex-col justify-center items-center w-full max-h-full h-full bg-slate-200">
                                     <p className="text-center">
-                                        Select a {nounType} from the panel on the left, or click &quot;New {ucFirst(nounType)}&quot; to create a new one.
+                                        Select a {nounType} from the dropdown, or click the &quot;+&quot; icon above to create a new one.
                                     </p>
                                 </div>
                         }
