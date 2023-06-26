@@ -123,15 +123,22 @@ export default function ChatBox({ conversationId } : {
         <section className="flex flex-col absolute top-0 left-0 right-0 bottom-0">
             <div className="rounded-sm flex-grow overflow-hidden flex flex-col items-stretch [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
-                    <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3 ${chatLog.length === 0 && !chatResponse ? 'justify-center' : 'justify-end' }`}>
-                        {
-                            chatLog.length === 0 && !chatResponse ? <p className="text-center text-gray-500 justify-self-center">
-                                Start the conversation by sending a message below.
-                            </p> : null
-                        }
-
+                    <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3`}>
                         {chatLog.map(({ content, role }, i) => <ChatBubble role={role} key={i}>{content}</ChatBubble>)}
                         {chatResponse ? <ChatBubble role="assistant" key={chatLog.length}>{chatResponse}</ChatBubble> : null}
+                        {pendingChat && !chatResponse ? <ChatBubble role="assistant" key="loader">
+                            <div className="flex flex-row">
+                                <div className="py-2 mx-0.5 animate-bounce">
+                                    <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
+                                </div>
+                                <div className="py-2 mx-0.5 animate-bounce [animation-delay:0.2s]">
+                                    <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
+                                </div>
+                                <div className="py-2 mx-0.5 animate-bounce [animation-delay:0.4s]">
+                                    <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
+                                </div>
+                            </div>
+                        </ChatBubble> : null}
                     </div>
                 </div>
             </div>
@@ -144,12 +151,13 @@ export default function ChatBox({ conversationId } : {
                     } 
                 }>
                     <input 
+                        disabled={pendingChat}
                         type="text"
                         className="block flex-grow min-w-0 h-12 text-md border-0 py-1.5 lg:[border-bottom-left-radius:0.375rem] text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600" 
                         value={ text }
                         placeholder="Say something..."
                         onChange={ input => setText(input.target.value) }/>
-                    <button type="submit" className="flex bg-indigo-500 h-12 w-12 min-w-[3rem] lg:[border-bottom-right-radius:0.375rem] text-white justify-center items-center">
+                    <button disabled={pendingChat} type="submit" className="flex bg-indigo-500 h-12 w-12 min-w-[3rem] lg:[border-bottom-right-radius:0.375rem] text-white justify-center items-center disabled:bg-indigo-300">
                         <SendIcon size="1.5rem" className="-mb-1" />
                     </button>
             </form>

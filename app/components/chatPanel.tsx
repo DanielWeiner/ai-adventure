@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { Fragment, useRef, useState } from "react";
-import { useCreationContext } from "../context";
+import { useCreationContext } from "../create/context";
 import { CharacterIcon, ClassIcon, FactionIcon, LeftChevronIcon, LocationIcon, PlusIcon, SpeciesIcon, TrashIcon, WorldIcon } from "@/app/components/icons";
 import { Combobox, Transition } from "@headlessui/react";
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid'

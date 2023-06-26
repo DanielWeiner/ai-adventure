@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import CreationPage from "../../creationPage";
-import ChatPanel from "../chatPanel";
+import ChatPanel from "../../../components/chatPanel";
 import { generateInitialState } from "../../state";
 import CreationPageWrapper from "../../wrapper";
 import { NounType } from "@/app/api/noun";
