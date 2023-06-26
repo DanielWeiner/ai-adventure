@@ -41,14 +41,6 @@ export default function ChatPanel() {
     const queryClient = useQueryClient();
     const { sessionToken, nounType, nouns: initialNouns, noun: initialNoun } = useCreationContext();
 
-    if (!sessionToken) {
-        return (
-            <div className="w-full h-full flex justify-center items-center">
-                <span>Please log in to start creating.</span>
-            </div>
-        );
-    }
-    
     const [nounQuery, setNounQuery] = useState('');
     const [detailsShown, setDetailsShown] = useState(false);
     const swipeableHandlers = useSwipeable({

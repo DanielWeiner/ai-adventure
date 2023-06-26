@@ -7,7 +7,7 @@ import { NounType } from "@/app/api/noun";
 
 export default async function Create({ params: { pageName, nounId } } : { params: { pageName: NounType, nounId: string } }){
     const initialState = await generateInitialState({ pageName, nounId });
-    const { nounType, noun } = initialState;
+    const { nounType, noun, sessionToken } = initialState;
     
     if (!nounType) {
         return notFound();
@@ -19,9 +19,15 @@ export default async function Create({ params: { pageName, nounId } } : { params
 
     return (
         <CreationPage pageName={nounType}>
-            <CreationPageWrapper initialState={initialState}>
-                <ChatPanel />
-            </CreationPageWrapper>
+            {
+                sessionToken ? 
+                    <CreationPageWrapper initialState={initialState}>
+                        <ChatPanel />
+                    </CreationPageWrapper> : 
+                    <div className="w-full h-full flex justify-center items-center">
+                        <span>Please log in to start creating.</span>
+                    </div>
+            }
         </CreationPage>
     )
 }
