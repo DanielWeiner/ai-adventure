@@ -117,7 +117,7 @@ export default function ChatBox({ conversationId } : {
 
     useEffect(() => {
         scroller.current?.scrollTo(0, 999999999);
-    }, [scroller, chatLog, chatResponse])
+    }, [pendingChat, scroller, chatLog, chatResponse])
 
     return (
         <section className="flex flex-col absolute top-0 left-0 right-0 bottom-0">
