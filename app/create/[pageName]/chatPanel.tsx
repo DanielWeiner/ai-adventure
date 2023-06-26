@@ -10,6 +10,7 @@ import { useCreationContext } from "../context";
 import { CharacterIcon, ClassIcon, FactionIcon, LeftChevronIcon, LocationIcon, PlusIcon, SpeciesIcon, TrashIcon, WorldIcon } from "@/app/components/icons";
 import { Combobox, Transition } from "@headlessui/react";
 import { CheckIcon, ChevronUpDownIcon } from '@heroicons/react/20/solid'
+import { useSwipeable } from "react-swipeable";
 
 const ucFirst = (str: string) => str[0].toUpperCase() + str.slice(1);
 const fetchJson = async <T,>(url: string, options?: RequestInit) : Promise<T> => {
@@ -40,8 +41,13 @@ export default function ChatPanel() {
     const queryClient = useQueryClient();
     const { sessionToken, nounType, nouns: initialNouns, noun: initialNoun } = useCreationContext();
     const [nounQuery, setNounQuery] = useState('');
-    
-    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [detailsShown, setDetailsShown] = useState(false);
+    const swipeableHandlers = useSwipeable({
+        trackMouse: false,
+        trackTouch: true,
+        onSwipedLeft: () => !detailsShown ?  setDetailsShown(true) : null,
+        onSwipedRight: () => detailsShown ?  setDetailsShown(false) : null,
+    });
 
     const [comboboxFocused, setComboboxFocused] = useState(false);
     const inputElement = useRef<HTMLInputElement | null>(null);
@@ -86,7 +92,11 @@ export default function ChatPanel() {
 
     return (
         <div 
-            className={`flex flex-row flex-grow w-screen max-lg:w-[200vw] h-full lg:border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${drawerOpen? 'max-lg:[margin-left:calc(1rem-100vw)]' : ''}`}
+            {...swipeableHandlers}
+            className={
+                `flex flex-row flex-grow w-screen max-lg:w-[200vw] h-full lg:border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${
+                    detailsShown ? 'max-lg:[margin-left:calc(1rem-100vw)]' : ''
+                }`}
         >
             <div className="lg:w-8/12 max-lg:w-[calc(100vw-1rem)] flex flex-row h-full max-h-full">
                 <section className="flex flex-grow flex-col h-full max-h-full">
@@ -206,10 +216,10 @@ export default function ChatPanel() {
                 
             </div>
             <div 
-                onClick={() => setDrawerOpen(drawerOpen => !drawerOpen)} 
+                onClick={() => setDetailsShown(drawerOpen => !drawerOpen)} 
                 className="lg:hidden cursor-pointer flex flex-col h-full max-h-full justify-center bg-slate-400 text-white w-4 shadow-lg z-10"
             >
-                <LeftChevronIcon className={`transition-transform duration-150 ${drawerOpen ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="auto"/>
+                <LeftChevronIcon className={`transition-transform duration-150 ${detailsShown ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="auto"/>
             </div>
             <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem)] bg-slate-100">
                 {noun ? <div>
