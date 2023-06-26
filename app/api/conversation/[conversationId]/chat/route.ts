@@ -147,14 +147,14 @@ async function* detectIntents<T extends ConversationPurposeType>(
         relevantInfoStr +
         '\n[END RELEVANT INFO]\n' +
     
-        `\nHere\'s the most recent assistant prompt regarding the ${relevantInfo.type}. The user is responding to this. Do not generate results from it.` +
+        `\nHere\'s the most recent assistant prompt regarding the ${relevantInfo.type}. Do not generate results from it.` +
         '\n[START ASSISTANT PROMPT]\n' +
         lastAssistantPrompt +
         '\n[END ASSISTANT PROMPT]\n' +
 
         '\nWrite short but descriptive sentences for all of the information provided by the user\'s response to the assistant. ' + 
         'Each sentence must only contain one piece of information. ' +
-        'Enumerate all information referenced by the user explicitly as part of the output, as well as new information provided by the user. ' + 
+        'Each sentence must make sense on its own without any external context. ' +
         'Write multiple sentences for compound information.\n' +
         `Here\'s the user\'s response to the assistant regarding the ${relevantInfo.type}.`+
         '\n[START USER RESPONSE]\n' +
