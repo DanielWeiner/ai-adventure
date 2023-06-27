@@ -5,7 +5,7 @@ import { FactionIcon } from "../components/icons";
 import { LocationIcon, WorldIcon } from "../components/icons";
 import Link from "next/link";
 
-const NavLink = ({ pageName, nounType, tooltip, icon: Icon } : { pageName: string, nounType: string, tooltip: string, icon: React.FC<{className?: string, size: string}>}) => (
+const createNavLinkComponent = (pageName: string) => ({ nounType, tooltip, icon: Icon } : { nounType: string, tooltip: string, icon: React.FC<{className?: string, size: string}>}) => (
     <Link 
         href="/create/[pageName]" 
         as={`/create/${nounType}`} 
@@ -17,19 +17,21 @@ const NavLink = ({ pageName, nounType, tooltip, icon: Icon } : { pageName: strin
             { tooltip }
         </span> 
     </Link>
-)
+);
 
 export default function CreationPage({ pageName, children } : { pageName: string, children?: React.ReactNode }) {
+    const NavLink = createNavLinkComponent(pageName);
+
     return (
         <div className="flex flex-col lg:flex-row w-full h-full">
             <div className="lg:max-w-[5rem] border-gray-200 lg:border-gray-300 dark:border-gray-700 border-b-2 lg:border-b-0">
                 <nav className="flex mr-0 max-w-full lg:-mr-0.5 flex-row lg:flex-col -mb-0.5 lg:mb-0 justify-evenly lg:justify-normal lg:space-x-0">
-                    <NavLink icon={WorldIcon} nounType="world" pageName={pageName} tooltip="Worlds" />
-                    <NavLink icon={LocationIcon} nounType="location" pageName={pageName} tooltip="Locations" />
-                    <NavLink icon={FactionIcon} nounType="faction" pageName={pageName} tooltip="Factions" />
-                    <NavLink icon={SpeciesIcon} nounType="species" pageName={pageName} tooltip="Species" />
-                    <NavLink icon={ClassIcon} nounType="class" pageName={pageName} tooltip="Classes" />
-                    <NavLink icon={CharacterIcon} nounType="character" pageName={pageName} tooltip="Characters" />
+                    <NavLink icon={WorldIcon} nounType="world" tooltip="Worlds" />
+                    <NavLink icon={LocationIcon} nounType="location" tooltip="Locations" />
+                    <NavLink icon={FactionIcon} nounType="faction" tooltip="Factions" />
+                    <NavLink icon={SpeciesIcon} nounType="species" tooltip="Species" />
+                    <NavLink icon={ClassIcon} nounType="class" tooltip="Classes" />
+                    <NavLink icon={CharacterIcon} nounType="character" tooltip="Characters" />
                 </nav>
             </div>
             {children}

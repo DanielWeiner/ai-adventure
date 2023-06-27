@@ -30,7 +30,7 @@ const contextDescriptions = {
 };
 
 type ContextPrompts = {
-    [ConversationType in ConversationPurposeType]: (context: string) => string
+    [ConversationType in ConversationPurposeType]: (context: string, firstTime: boolean) => string
 };
 
 type RelevantInformation = {
@@ -58,25 +58,39 @@ const intents : UserIntents = {
             description: `the name of the ${context} is provided`,
             data: [`the name of the ${context}`]
         }),
+        setNamedAttributes: context => ({
+            description: `new or changed named information is provided about the ${context}`,
+            data: [`an attribute name for the new or changed named information in plain english, followed by its corresponding short but descriptive string value, without grammar or punctuation. Alternate between name and value for all new or changed named attributes, ensuring no string in this array is empty`]
+        }),
         addAttributes: context => ({
             description: `new unnamed information is provided about the ${context}`,
-            data: [`the new information as short but descriptive, unlabeled attributes, without grammar or punctuation. Each attribute must make sense on its own without context from other attributes`]
+            data: [`the new information as short but descriptive, unlabeled string values, without grammar or punctuation. Each attribute must make sense on its own without context from other attributes`]
         }),
         removeAttributes: context => ({
-            description: `an attribute was requested to be removed from the ${context}'s additional attributes`,
-            data: [`zero-indexed indices as strings, for each of the existing attribute to be deleted`]
+            description: `any unnamed attributes were requested to be removed from the ${context}`,
+            data: [`zero-indexed indices as strings, for each of the existing unnamed attribute to be deleted`]
+        }),
+        removeNamedAttributes: context => ({
+            description: `any named attributes were requested to be removed from the ${context}`,
+            data: [`names of each named attribute to be removed`]
+        }),
+        replaceAttributes: context => ({
+            description: `any unnamed attributes of the ${context} were requested to be replaced`,
+            data: [`a zero-indexed index of an unnamed attribute as a string, followed by its replacement value, alternating between index and value for all unnamed attributes being replaced`]
         }),
     },
     adventure:{}
-}
+};
 
 const systemPrompts : ContextPrompts = {
-    create: (context: string) => [
+    create: (context: string, firstTime: boolean) => [
         `You are helpful worldbuilding assistant whose purpose is to assist in creating a ${contextDescriptions[context as NounType]}.`,
-        `Your first chat response starts with "Hi! Let's create a ${context} together."`,
-        `Your first priority is to ensure that the ${context} has a name.`,
-        `After that, you may continue to assist in creating the ${context}.`,
-        `Always refrain from enumerating the attributes of the ${context} as a list unless specifically prompted.`
+        ...firstTime ? [
+            `You must start the conversation with "Hi! Let's create a ${context} together."`,
+            `Your first and only prompt is for the name of the ${context}, adding some helpful pointers on creating a good name.`,
+        ] : [
+            `Always refrain from enumerating the attributes of the ${context} as a list unless specifically asked.`
+        ],
     ].join(' '),
     adventure: () => ''
 };
@@ -180,9 +194,13 @@ async function* detectIntents<T extends ConversationPurposeType>(
     const messageContent = 'You are an intent classifier. ' + 
         'You analyze statements about a user\'s last message for intents. ' +
         'Each statement may have multiple intents. ' + 
-        'Each intent is output a separate line. ' + 
-        'Each intent must be a valid JSON array of strings with nothing before or after. ' +
-        'Do add any information that hasn\t been speficied. ' +
+        'Not every possible intent may be inferred. ' +
+        'The output for a classified must be a valid JSON array of strings in its own line with nothing before or after. ' +
+        'The first element of each array is the name of the classified intent, followed by strings representing the intent data. ' +
+        'Two classified intents must not mean the same thing.' +
+        'Do not add any information that hasn\'t been speficied. ' +
+        'Do not add any information that is already present. ' +
+        'Do not add unkown or incomplete information. ' +
         'The format is extremely important.' +
 
         '\nThe following are the possible intents:\n' +
@@ -192,17 +210,17 @@ async function* detectIntents<T extends ConversationPurposeType>(
         '\nDo not add any information that hasn\'t been explicitly specified. ' +
         '\n' +
 
-        '\nGiven the following previous chat log:' + 
+        '\nHere is the previous chat log for context:' + 
         '\n[START CHAT LOG]\n' + 
         fullChatLog +
         '\n[END CHAT LOG]\n' +
         
-        '\nAnd the following relevant, up-to-date information:' + 
+        '\nHere is following relevant, up-to-date information for context. Do not infer intents from this.' + 
         '\n[START RELEVANT INFORMATION]\n' + 
         relevantInfoStr +
         '\n[END RELEVANT INFORMATION]\n' +
 
-        '\nAnalyze the intents for the following statements that describe the user\'s last message:' + 
+        '\nAnalyze the intents of just the following statements that describe the user\'s last message:' + 
         '\n[START STATEMENTS]\n' +
         infoStatements +
         '\n[END STATEMENTS]';
@@ -241,8 +259,20 @@ async function processChatIntents(mongoClient: MongoClient, conversationId: stri
         return addAttributes(mongoClient, conversationId, intentData);
     }
 
+    if (intentName === 'setNamedAttributes') {
+        return setNamedAttributes(mongoClient, conversationId, intentData);
+    }
+
+    if (intentName === 'replaceAttributes') {
+        return replaceAttributes(mongoClient, conversationId, intentData);
+    }
+
     if (intentName === 'removeAttributes') {
         return removeAttributes(mongoClient, conversationId, intentData);
+    }
+
+    if (intentName === 'removeNamedAttributes') {
+        return removeNamedAttributes(mongoClient, conversationId, intentData);
     }
 
     return [];
@@ -277,6 +307,93 @@ async function addAttributes(mongoClient: MongoClient, conversationId: string, a
     return [{
         name: 'noun.update',
         description: `Added [${attributes.map(attr => JSON.stringify(attr)).join(',')}].`
+    }];
+}
+
+async function setNamedAttributes(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+    const nouns = getNounCollection(mongoClient);
+    
+    const noun = await nouns.findOne({ conversationId });
+    if (!noun) {
+        return [];
+    }
+
+    const namedAttrs : { [key in string] : string } = {};
+    const displayNamedAttributes  : { [key in string] : string } = {};
+    for (let i = 0; i < attributes.length; i += 2) {
+        if (attributes[i] && attributes[i+1]) {
+            namedAttrs[`namedAttributes.${attributes[i]}`] = attributes[i+1];
+            displayNamedAttributes[attributes[i]] = attributes[i+1];
+        }
+    }
+
+    if (Object.keys(namedAttrs).length === 0) {
+        return [];
+    }
+
+    await nouns.updateOne({ conversationId }, { $set: namedAttrs });
+
+    return [{
+        name: 'noun.update',
+        description: `Set [${[...Object.entries(displayNamedAttributes)].map(([key, val]) => JSON.stringify({ [key]: val})).join(',')}].`
+    }];
+}
+
+async function replaceAttributes(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+    const nouns = getNounCollection(mongoClient);
+    
+    const noun = await nouns.findOne({ conversationId });
+    if (!noun) {
+        return [];
+    }
+
+    const idxVals : { [key in string] : string } = {};
+    const displayIdxVals : { [key in string]: string} = {};
+    for (let i = 0; i < attributes.length; i += 2) {
+        if (attributes[i] && attributes[i+1] && noun.attributes[+attributes[i]]) {
+            idxVals[`attributes.${attributes[i]}`] = attributes[i+1];
+            displayIdxVals[attributes[i]] = attributes[i+1];
+        }
+    }
+
+    if (Object.keys(idxVals).length === 0) {
+        return [];
+    }
+
+    await nouns.updateOne({ conversationId }, { $set: idxVals });
+
+    return [{
+        name: 'noun.update',
+        description: `Replaced [${[...Object.entries(displayIdxVals)].map(([key, val]) => JSON.stringify([ noun.attributes[+key], val ])).join(',')}].`
+    }];
+}
+
+async function removeNamedAttributes(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+    const nouns = getNounCollection(mongoClient);
+    
+    const noun = await nouns.findOne({ conversationId });
+    if (!noun) {
+        return [];
+    }
+
+    const removedKeys : { [key in string]: 1 } = {};
+    const displayRemovedKeys : string[] = [];
+    for (let i = 0; i < attributes.length; i ++) {
+        if (attributes[i] && noun.attributes[i]) {
+            removedKeys[`namedAttributes.${attributes[i]}`] = 1;
+            displayRemovedKeys.push(attributes[i]);
+        }
+    }
+
+    if (Object.keys(removedKeys).length === 0) {
+        return [];
+    }
+
+    await nouns.updateOne({ conversationId }, { $unset: removedKeys });
+
+    return [{
+        name: 'noun.update',
+        description: `Removed [${displayRemovedKeys.map(key => JSON.stringify({ [key]: noun.namedAttributes[key] })).join(',')}].`
     }];
 }
 
@@ -391,7 +508,7 @@ class Route {
                             $push: { 
                                 messages: { 
                                     $each: events.map(({ description }) => ({
-                                        content: description,
+                                        content: `EVENT LOG: ${description}`,
                                         role: 'system'
                                     }))
                                 } 
@@ -406,11 +523,11 @@ class Route {
                         temperature: 0,
                         stream: true,
                         messages: [
-                            { role: 'system', content: systemPrompts[purpose.type](purpose.context) },
+                            { role: 'system', content: systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0) },
                             ...openaiMessages.slice(-16),
-                            ...relevantInfoString ? [
+                            ...openaiMessages.length > 0 ? [
                                 { role: 'system', content: relevantInfoString } as const
-                            ] : []
+                            ] : [],
                         ]
                     }, { responseType: 'stream' }) as any as AxiosResponse<IncomingMessage>;
     
