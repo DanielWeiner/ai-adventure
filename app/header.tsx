@@ -27,7 +27,6 @@ export default function Header({ userName, userImage, loggedIn }: { userName: st
                 </div>
                 <div id="navbar-with-mega-menu" className="hs-collapse hidden overflow-hidden transition-all duration-300 basis-full grow sm:block">
                     <div className="flex flex-col gap-5 mt-5 sm:flex-row sm:items-center sm:justify-end sm:mt-0 sm:pl-5">
-                        <Link className="font-medium text-gray-500" href="#" aria-current="page">Adventure</Link>
                         <Link className="font-medium text-blue-500" href="/create" aria-current="page">Create</Link>
                         <div className={`relative inline-flex ${loggedIn ? ' hs-dropdown' : ''} `}>
                             {loggedIn ?

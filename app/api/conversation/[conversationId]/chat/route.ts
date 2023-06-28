@@ -89,7 +89,7 @@ const intents : UserIntents = {
 
 const systemPrompts : ContextPrompts = {
     create: (context: string, firstTime: boolean) => [
-        `You are helpful worldbuilding assistant whose purpose is to assist in creating a ${contextDescriptions[context as NounType]}.`,
+        `You are a helpful worldbuilding assistant whose purpose is to assist in creating a ${contextDescriptions[context as NounType]}.`,
         ...firstTime ? [
             `You must start the conversation with "Hi! Let's create a ${context} together."`,
             `Your first and only prompt is for the name of the ${context}, adding some helpful pointers on creating a good name.`,
