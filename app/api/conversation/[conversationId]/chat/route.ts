@@ -59,17 +59,16 @@ const intents : UserIntents = {
             description: `The ${context} is given a name.`,
             data: '["setName","<name>"]'
         }),
-        addAttributes: context => ({
-            description: `Unnamed attributes have been provided for this ${context} .`,
-            data: '["addAttributes","<value1>","<value2>", ... ,"<valueN>"]',
-            notes: `Values should be short but descriptive, unlabeled string values, without grammar or punctuation. Each value must make sense on its own without context from other attributes.`
-        }),
         setNamedAttributes: context => ({
-            description: `Named attributes that are relevant to any ${context} in general have been provided for this ${context}.`,
+            description: `Named attributes that are useful to categorize a ${context} have been defined for this ${context}.`,
             data: '["setNamedAttributes","<attributeName1>","<value1>","<attributeName2>","<value2>", ... ,"<attributeNameN>","<valueN>"]',
-            notes: `Arrays of values for a single attribute name should be in the form of comma-delimited and spaced strings. Attribute names and values should be plain english, short but descriptive, without grammar or punctuation.`
+            notes: `Attribute names and values must be plain English. Do not use not camel case. They should be short but descriptive, without grammar or punctuation. Arrays of values for a single attribute name should be in the form of comma-delimited and spaced strings.`
         }),
-        
+        addAttributes: context => ({
+            description: `Unnamed attributes or novel details have been provided for this ${context} .`,
+            data: '["addAttributes","<value1>","<value2>", ... ,"<valueN>"]',
+            notes: `Values should be short but descriptive, without grammar or punctuation. Each value must make sense on its own without context from other named or unnamed attributes.`
+        }),
         removeNamedAttributes: context => ({
             description: `Named attributes of the ${context} have been removed.`,
             data: '["removeNamedAttributes","<attributeKey1>","<attributeKey2>", ... ,"<attributeKeyN>"]'
