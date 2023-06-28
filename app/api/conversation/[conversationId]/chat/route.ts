@@ -238,7 +238,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
     
     const result = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
-        temperature: 1,
+        temperature: 0,
         messages: [
             { 
                 role: 'user',
