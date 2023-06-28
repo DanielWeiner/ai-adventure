@@ -197,10 +197,10 @@ async function* detectIntents<T extends ConversationPurposeType>(
         'Not every possible intent may be inferred. ' +
         'The output for a classified must be a valid JSON array of strings in its own line with nothing before or after. ' +
         'The first element of each array is the name of the classified intent, followed by strings representing the intent data. ' +
-        'Two classified intents must not mean the same thing.' +
-        'Do not add any information that hasn\'t been speficied. ' +
+        'Two classified intents must not mean the same thing. ' +
+        'Do not add any information that hasn\'t been specified. ' +
         'Do not add any information that is already present. ' +
-        'Do not add unkown or incomplete information. ' +
+        'Do not add unknown or incomplete information. ' +
         'The format is extremely important.' +
 
         '\nThe following are the possible intents:\n' +
