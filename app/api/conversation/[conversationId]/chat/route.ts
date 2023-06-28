@@ -53,15 +53,6 @@ type UserIntents = {
     }
 }
 
-const plurals = {
-    class: 'classes',
-    character: 'characters',
-    location: 'locations',
-    world: 'worlds',
-    species: 'species',
-    faction: 'factions'
-} as const;
-
 const intents : UserIntents = {
     create: {
         setName: context => ({
