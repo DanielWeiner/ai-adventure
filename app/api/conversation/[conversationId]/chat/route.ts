@@ -49,10 +49,18 @@ type UserIntents = {
             description: string,
             data: string,
             notes?: string
-
         })
     }
 }
+
+const plurals = {
+    class: 'classes',
+    character: 'characters',
+    location: 'locations',
+    world: 'worlds',
+    species: 'species',
+    faction: 'factions'
+} as const;
 
 const intents : UserIntents = {
     create: {
@@ -60,16 +68,17 @@ const intents : UserIntents = {
             description: `The ${context} is given a name.`,
             data: '["setName","<name>"]'
         }),
-        setNamedAttributes: context => ({
-            description: `Named attributes of the ${context} have been provided.`,
-            data: '["setNamedAttributes","<attributeName1>","<value1>","<attributeName2>","<value2>", ... ,"<attributeNameN>","<valueN>"]',
-            notes: 'Attribute names and values should be plain english, short but descriptive, without grammar or punctuation.'
-        }),
         addAttributes: context => ({
-            description: `Unnamed attributes of the ${context} have been provided.`,
+            description: `Unnamed attributes have been provided for this ${context} .`,
             data: '["addAttributes","<value1>","<value2>", ... ,"<valueN>"]',
-            notes: 'Values should be short but descriptive, unlabeled string values, without grammar or punctuation. Each value must make sense on its own without context from other attributes.'
+            notes: `Values should be short but descriptive, unlabeled string values, without grammar or punctuation. Each value must make sense on its own without context from other attributes.`
         }),
+        setNamedAttributes: context => ({
+            description: `Named attributes that are relevant to any ${context} in general have been provided for this ${context}.`,
+            data: '["setNamedAttributes","<attributeName1>","<value1>","<attributeName2>","<value2>", ... ,"<attributeNameN>","<valueN>"]',
+            notes: `Arrays of values for a single attribute name should be in the form of comma-delimited and spaced strings. Attribute names and values should be plain english, short but descriptive, without grammar or punctuation.`
+        }),
+        
         removeNamedAttributes: context => ({
             description: `Named attributes of the ${context} have been removed.`,
             data: '["removeNamedAttributes","<attributeKey1>","<attributeKey2>", ... ,"<attributeKeyN>"]'
@@ -234,7 +243,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
     
     const result = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
-        temperature: 0,
+        temperature: 1,
         messages: [
             { 
                 role: 'user',
