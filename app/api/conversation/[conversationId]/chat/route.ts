@@ -59,28 +59,28 @@ const intents : UserIntents = {
             description: `The ${context} is given a name.`,
             data: '["setName","<name>"]'
         }),
-        setNamedAttributes: context => ({
-            description: `Named attributes that are useful to categorize a ${context} have been defined for this ${context}.`,
-            data: '["setNamedAttributes","<attributeName1>","<value1>","<attributeName2>","<value2>", ... ,"<attributeNameN>","<valueN>"]',
-            notes: `Attribute names and values must be plain English. Do not use not camel case. They should be short but descriptive, without grammar or punctuation. Arrays of values for a single attribute name should be in the form of comma-delimited and spaced strings.`
+        setNamedProperties: context => ({
+            description: `Named properties that are useful for categorizing a ${context} have been set for this ${context}.`,
+            data: '["setNamedProperties","<first property name>","<first property value>","<next property name>","<next property value>", ... ,"<last property name>","<last property value>"]',
+            notes: `Property names must be plain English labels without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. Multiple values for a single named property should be in the form of comma-delimited and spaced strings. Named properties must not duplicate the information in any new or existing unnamed attributes.`
         }),
         addAttributes: context => ({
-            description: `Unnamed attributes or novel details have been provided for this ${context} .`,
-            data: '["addAttributes","<value1>","<value2>", ... ,"<valueN>"]',
-            notes: `Values should be short but descriptive, without grammar or punctuation. Each value must make sense on its own without context from other named or unnamed attributes.`
+            description: `Miscellaneous details have been provided for this ${context}.`,
+            data: '["addAttributes","<first attribute>","<second attribute>", ... ,"<last attribute>"]',
+            notes: `Values should be short but descriptive, without grammar or punctuation. Each value must make sense on its own without context from other new or existing named properties or unnamed attributes. Unnamed attributes must not duplicate the information in any new or existing named properties. Do not combine multiple unnamed attributes into a single string.`
         }),
-        removeNamedAttributes: context => ({
-            description: `Named attributes of the ${context} have been removed.`,
-            data: '["removeNamedAttributes","<attributeKey1>","<attributeKey2>", ... ,"<attributeKeyN>"]'
+        removeNamedProperties: context => ({
+            description: `Named properties of the ${context} have been removed.`,
+            data: '["removeNamedProperties","<first property name>","<next property name>", ... ,"<last property name>"]'
         }),
         removeAttributes: context => ({
             description: `Unnamed attributes of the ${context} have been removed.`,
-            data: '["removeAttributes","<index1>","<index2>", ... ,"<indexN>"]',
+            data: '["removeAttributes","<first index>","<next index>", ... ,"<last index>"]',
             notes: 'Indices must be zero-indexed.'
         }),
         replaceAttributes: context => ({
-            description: `Unnamed attributes of the ${context} have been replaced.`,
-            data: '["replaceAttributes","<index1>","<value1>","<index2>","<value2>", ... ,"<indexN>","<valueN>"]',
+            description: `Unnamed attributes of the ${context} have been replaced with new values.`,
+            data: '["replaceAttributes","<first index>","<first attribute>","<next index>","<next attribute>", ... ,"<last index>","<last attribute>"]',
             notes: 'Indices must be zero-indexed. Values should be short but descriptive, unlabeled string values, without grammar or punctuation.'
         }),
     },
@@ -94,7 +94,7 @@ const systemPrompts : ContextPrompts = {
             `You must start the conversation with "Hi! Let's create a ${context} together."`,
             `Your first and only prompt is for the name of the ${context}, adding some helpful pointers on creating a good name.`,
         ] : [
-            `Always refrain from enumerating the attributes of the ${context} as a list unless specifically asked.`
+            `Always refrain from enumerating the attributes of the ${context} as a list unless specifically asked. Unless prompted, limit the number suggestions or questions to at most three or four. The user should be able to provide small, focused answers to your prompts, so don\'t overwhelm the user with questions or suggestions.`
         ],
     ].join(' '),
     adventure: () => ''
@@ -114,11 +114,11 @@ function listRelevantInformation({ name, type, defaultName, attributesMap, attri
     return [
         `Name of the ${type}: ${name || 'unknown' }`,
         ...Object.keys(attributesMap).length ? [[
-            `Named attributes for ${name || defaultName}:`,
+            `Named properties for ${name || defaultName}:`,
             ...[...Object.entries(attributesMap)].map(([key, val]) => `${key}: ${val}`),
         ].join('\n') + '\n'] : [],
         ...attributes.length ? [[
-            `Additional attributes for ${name || defaultName}:`,
+            `Unnamed attributes for ${name || defaultName}:`,
             ...attributes.map((val, i) => `${i + 1}. ${val}`)
         ].join('\n') + '\n'] : []
     ].join('\n').trim()
@@ -205,7 +205,8 @@ async function* detectIntents<T extends ConversationPurposeType>(
         'Do not add any information that hasn\'t been specified. ' + 
         'Do not add any information that is already present. ' + 
         'Do not add unknown or incomplete information. ' + 
-        'The format is extremely important.\n' +
+        'The syntax of the output is extremely important. ' + 
+        'Make sure that the output is a valid two-dimensional JSON array of strings with no extra or missing characters.\n' +
 
         '\nThe following are the possible intents:\n' +
         calculateIntentList(conversationType, context) +
@@ -269,8 +270,8 @@ async function processChatIntents(mongoClient: MongoClient, conversationId: stri
         return addAttributes(mongoClient, conversationId, intentData);
     }
 
-    if (intentName === 'setNamedAttributes') {
-        return setNamedAttributes(mongoClient, conversationId, intentData);
+    if (intentName === 'setNamedProperties') {
+        return setNamedProperties(mongoClient, conversationId, intentData);
     }
 
     if (intentName === 'replaceAttributes') {
@@ -281,8 +282,8 @@ async function processChatIntents(mongoClient: MongoClient, conversationId: stri
         return removeAttributes(mongoClient, conversationId, intentData);
     }
 
-    if (intentName === 'removeNamedAttributes') {
-        return removeNamedAttributes(mongoClient, conversationId, intentData);
+    if (intentName === 'removeNamedProperties') {
+        return removeNamedProperties(mongoClient, conversationId, intentData);
     }
 
     return [];
@@ -320,7 +321,7 @@ async function addAttributes(mongoClient: MongoClient, conversationId: string, a
     }];
 }
 
-async function setNamedAttributes(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+async function setNamedProperties(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });
@@ -378,7 +379,7 @@ async function replaceAttributes(mongoClient: MongoClient, conversationId: strin
     }];
 }
 
-async function removeNamedAttributes(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+async function removeNamedProperties(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });

@@ -74,45 +74,48 @@ export default function ChatBox({ conversationId } : {
 
     useEffect(() => {
         if (!pendingChat) return;
-        if (!eventSource) {
-            const newEventSource = new EventSource(`/api/conversation/${conversationId}/chat`);
-            
-            const end = () => {
-                chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current } ];
-                newEventSource.close();
-                setPendingChat(false);
-                setEventSource(null);
-                setChatLog(chatLogRef.current);
-                setChatResponse("");
-                queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
-            };
-            
-            const eventListener = (event: MessageEvent) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.events) {
-                        if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
-                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
-                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
-                        }
-                        return;
-                    }
-                    if (data.done) {
-                        return end();
-                    }
+        
+        const end = () => {
+            chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current } ];
+            eventSource?.close();
+            setPendingChat(false);
+            setEventSource(null);
+            setChatLog(chatLogRef.current);
+            setChatResponse("");
+            queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
+        };
 
-                    chatResponseRef.current += data.choices[0].delta.content || "";
-                    setChatResponse(chatResponseRef.current);
-                } catch(e) {
+        const eventListener = (event: MessageEvent) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.events) {
+                    if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
+                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
+                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
+                    }
+                    return;
+                }
+                if (data.done) {
                     return end();
                 }
-            };
 
-            newEventSource.addEventListener('message', eventListener);
+                chatResponseRef.current += data.choices[0].delta.content || "";
+                setChatResponse(chatResponseRef.current);
+            } catch(e) {
+                return end();
+            }
+        };
+
+        if (!eventSource) {
+            const newEventSource = new EventSource(`/api/conversation/${conversationId}/chat`);
+
+            
             setEventSource(newEventSource);
             setPendingChat(true);
             return;
         }
+        eventSource.addEventListener('message', eventListener);
+        return () => eventSource.removeEventListener('message', eventListener);
     }, [ setPendingChat, pendingChat, eventSource, setEventSource, chatResponseRef, setChatResponse, chatLog, setChatLog, conversationId, noun?._id, nounType, queryClient, sessionToken]);
 
     useEffect(() => {
