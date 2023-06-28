@@ -210,7 +210,8 @@ async function* detectIntents<T extends ConversationPurposeType>(
         'Do not add any information that is already present. ' + 
         'Do not add unknown or incomplete information. ' + 
         'The syntax of the output is extremely important. ' + 
-        'Make sure that the output is a valid two-dimensional JSON array of strings with no extra or missing characters.\n' +
+        'Make sure that the output is a valid two-dimensional JSON array of strings with no extra or missing characters. ' +
+        'Do not add any extra output before or after that JSON.\n' +
 
         '\nThe following are the possible intents:\n' +
         calculateIntentList(conversationType, context) +
