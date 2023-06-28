@@ -47,7 +47,9 @@ type UserIntents = {
     [ConversationType in ConversationPurposeType]: {
         [Intent in string]: (context: string) => ({
             description: string,
-            data: string[]
+            data: string,
+            notes?: string
+
         })
     }
 }
@@ -55,28 +57,32 @@ type UserIntents = {
 const intents : UserIntents = {
     create: {
         setName: context => ({
-            description: `the name of the ${context} is provided`,
-            data: [`the name of the ${context}`]
+            description: `The ${context} is given a name.`,
+            data: '["setName","<name>"]'
         }),
         setNamedAttributes: context => ({
-            description: `new or changed named information is provided about the ${context}`,
-            data: [`an attribute name for the new or changed named information in plain english, followed by its corresponding short but descriptive string value, without grammar or punctuation. Alternate between name and value for all new or changed named attributes, ensuring no string in this array is empty`]
+            description: `Named attributes of the ${context} have been provided.`,
+            data: '["setNamedAttributes","<attributeName1>","<value1>","<attributeName2>","<value2>", ... ,"<attributeNameN>","<valueN>"]',
+            notes: 'Attribute names and values should be plain english, short but descriptive, without grammar or punctuation.'
         }),
         addAttributes: context => ({
-            description: `new unnamed information is provided about the ${context}`,
-            data: [`the new information as short but descriptive, unlabeled string values, without grammar or punctuation. Each attribute must make sense on its own without context from other attributes`]
-        }),
-        removeAttributes: context => ({
-            description: `any unnamed attributes were requested to be removed from the ${context}`,
-            data: [`zero-indexed indices as strings, for each of the existing unnamed attribute to be deleted`]
+            description: `Unnamed attributes of the ${context} have been provided.`,
+            data: '["addAttributes","<value1>","<value2>", ... ,"<valueN>"]',
+            notes: 'Values should be short but descriptive, unlabeled string values, without grammar or punctuation. Each value must make sense on its own without context from other attributes.'
         }),
         removeNamedAttributes: context => ({
-            description: `any named attributes were requested to be removed from the ${context}`,
-            data: [`names of each named attribute to be removed`]
+            description: `Named attributes of the ${context} have been removed.`,
+            data: '["removeNamedAttributes","<attributeKey1>","<attributeKey2>", ... ,"<attributeKeyN>"]'
+        }),
+        removeAttributes: context => ({
+            description: `Unnamed attributes of the ${context} have been removed.`,
+            data: '["removeAttributes","<index1>","<index2>", ... ,"<indexN>"]',
+            notes: 'Indices must be zero-indexed.'
         }),
         replaceAttributes: context => ({
-            description: `any unnamed attributes of the ${context} were requested to be replaced`,
-            data: [`a zero-indexed index of an unnamed attribute as a string, followed by its replacement value, alternating between index and value for all unnamed attributes being replaced`]
+            description: `Unnamed attributes of the ${context} have been replaced.`,
+            data: '["replaceAttributes","<index1>","<value1>","<index2>","<value2>", ... ,"<indexN>","<valueN>"]',
+            notes: 'Indices must be zero-indexed. Values should be short but descriptive, unlabeled string values, without grammar or punctuation.'
         }),
     },
     adventure:{}
@@ -96,12 +102,12 @@ const systemPrompts : ContextPrompts = {
 };
 
 function calculateIntentList<T extends ConversationPurposeType>(conversationType: T, context: ConversationContext[T]) {
-    return [...Object.entries(intents[conversationType])].map(([intentName, intentFn], i) => {
-        const { data, description } = intentFn(context);        
-        const suffix = data.map((str, i) => (i == 0 ? ' ' : '') + (i === data.length - 1 ? `and ${str}` : str)).join(', ');
-        return `${i + 1}. If ${description}, output on a new line a JSON array containing only the string "${intentName}"${suffix}.`
+    return [...Object.values(intents[conversationType])].map((intentFn, i) => {
+        const { description, data, notes } = intentFn(context);        
+        return `${i + 1}. Intent: ${description}\nOutput: [...<other intents>...,${data},...<other intents>...]${notes ? `\n${notes}` : ''}\n`
     }).concat([
-        `${Object.keys(intents[conversationType]).length + 1}. If no intent can be inferred, or if it was just a request for suggestions, simply output ["none"].`
+        `${Object.keys(intents[conversationType]).length + 1}. Intent: Unknown or a request for suggestions.\n` +
+        'Output: [["none"]]'
     ]).join('\n')
 }
 
@@ -191,17 +197,16 @@ async function* detectIntents<T extends ConversationPurposeType>(
     const infoStatements = (splitInformationResult.data.choices[0].message?.content?.trim() ?? '');
     console.log(infoStatements);
 
-    const messageContent = 'You are an intent classifier. ' + 
-        'You analyze statements about a user\'s last message for intents. ' +
+    const messageContent = 'You are an intent classifier. ' +
+        'You analyze statements about a user\'s last message for intents. ' + 
         'Each statement may have multiple intents. ' + 
-        'Not every possible intent may be inferred. ' +
-        'The output for a classified must be a valid JSON array of strings in its own line with nothing before or after. ' +
-        'The first element of each array is the name of the classified intent, followed by strings representing the intent data. ' +
-        'Two classified intents must not mean the same thing. ' +
-        'Do not add any information that hasn\'t been specified. ' +
-        'Do not add any information that is already present. ' +
-        'Do not add unknown or incomplete information. ' +
-        'The format is extremely important.' +
+        'Not every possible intent may be inferred. ' + 
+        'Try to infer as many intents as possible. ' + 
+        'Two inferred intents must not mean the same thing. ' + 
+        'Do not add any information that hasn\'t been specified. ' + 
+        'Do not add any information that is already present. ' + 
+        'Do not add unknown or incomplete information. ' + 
+        'The format is extremely important.\n' +
 
         '\nThe following are the possible intents:\n' +
         calculateIntentList(conversationType, context) +
@@ -239,14 +244,20 @@ async function* detectIntents<T extends ConversationPurposeType>(
     });
     
     const intentText = result.data.choices[0].message?.content?.trim() || '';
-    const intents = (intentText || '["none"]').split(/[\r\n]+/g);
-    for (const intent of intents) {
-        console.log(intent);
-        try {
-            yield JSON.parse(intent);
-        } catch (e) {
-            yield [ "none" ];
+    console.log(intentText);
+    try {
+        const intents = JSON.parse(intentText);
+        if (!Array.isArray(intents)) {
+            yield ["none"];
+            return;
         }
+        for (const intent of intents) {
+            if (Array.isArray(intent) && intent.every(val => typeof val === 'string')) {
+                yield intent;
+            }
+        }
+    } catch {
+        yield ["none"];
     }
 }
 
