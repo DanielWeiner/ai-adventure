@@ -94,7 +94,11 @@ const systemPrompts : ContextPrompts = {
             `You must start the conversation with "Hi! Let's create a ${context} together."`,
             `Your first and only prompt is for the name of the ${context}, adding some helpful pointers on creating a good name.`,
         ] : [
-            `Always refrain from enumerating the attributes of the ${context} as a list unless specifically asked. Unless prompted, limit the number suggestions or questions to at most three or four. The user should be able to provide small, focused answers to your prompts, so don\'t overwhelm the user with questions or suggestions.`
+            `Always refrain from enumerating the properties and attributes of the ${context} as a list unless specifically asked. ` +
+            'Unless prompted, limit the number suggestions or questions to at most three or four. ' + 
+            'The user should be able to provide small, focused answers to your prompts, so don\'t overwhelm the user with questions or suggestions. ' +
+            `Your prompt should always elicit more information from the user unless they're satisfied with the ${context} as a whole and have nothing more to add. ` +
+            `Keep the questions focused on the ${context}, but leave room for the user to explore aspects of the ${context} that you haven\'t asked about.`
         ],
     ].join(' '),
     adventure: () => ''
@@ -537,7 +541,7 @@ class Route {
                             { role: 'system', content: systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0) },
                             ...openaiMessages.slice(-16),
                             ...openaiMessages.length > 0 ? [
-                                { role: 'system', content: relevantInfoString } as const
+                                { role: 'system', content: `Current known information about the ${purpose.context}:\n${relevantInfoString}\n\nDo not echo this to the user.` } as const
                             ] : [],
                         ]
                     }, { responseType: 'stream' }) as any as AxiosResponse<IncomingMessage>;
