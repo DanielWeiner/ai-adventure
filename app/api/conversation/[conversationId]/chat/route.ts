@@ -62,7 +62,7 @@ const intents : UserIntents = {
         setNamedProperties: context => ({
             description: `Named properties that are useful for categorizing a ${context} have been set for this ${context}.`,
             data: '["setNamedProperties","<first property name>","<first property value>","<next property name>","<next property value>", ... ,"<last property name>","<last property value>"]',
-            notes: `Property names must be plain English labels without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. Multiple values for a single named property should be in the form of comma-delimited and spaced strings. Named properties must not duplicate the information in any new or existing unnamed attributes.`
+            notes: `Property names must be plain English labels, as short as possible, without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. Multiple values for a single named property should be in the form of comma-delimited and spaced strings. Named properties must not duplicate the information in any new or existing unnamed attributes.`
         }),
         addAttributes: context => ({
             description: `Miscellaneous details have been provided for this ${context}.`,
@@ -165,24 +165,50 @@ async function* detectIntents<T extends ConversationPurposeType>(
     const lastUserPrompt = chatMessages.slice(-1)[0].content!;
     const relevantInfoStr = listRelevantInformation(relevantInfo);
     const splitInformationPrompt = 
-        `\n\nHere\'s the most recent up-to-date information about the ${relevantInfo.type}:` +
-        '\n[START RELEVANT INFO]\n' +
-        relevantInfoStr +
-        '\n[END RELEVANT INFO]\n' +
+        `You will be analyzing a user prompt regarding a ${relevantInfo.type}.
+        
+        Here's the existing information about the ${relevantInfo.type} prior to the prompt. Do not generate results from it.
+        [START ${relevantInfo.type.toUpperCase()} INFO]
+        ${relevantInfoStr}
+        [END ${relevantInfo.type.toUpperCase()} INFO]
     
-        `\nHere\'s the most recent assistant prompt regarding the ${relevantInfo.type}. Do not generate results from it.` +
-        '\n[START ASSISTANT PROMPT]\n' +
-        lastAssistantPrompt +
-        '\n[END ASSISTANT PROMPT]\n' +
+        Here's the most recent assistant prompt regarding the ${relevantInfo.type}. Do not generate results from it. 
+        [START ASSISTANT PROMPT]
+        ${lastAssistantPrompt}
+        [END ASSISTANT PROMPT]
 
-        '\nWrite short but descriptive sentences for all of the information provided by the user\'s response to the assistant. ' + 
-        'Each sentence must only contain one piece of information. ' +
-        'Each sentence must make sense on its own without any external context. ' +
-        'Write multiple sentences for compound information.\n' +
-        `Here\'s the user\'s response to the assistant regarding the ${relevantInfo.type}.`+
-        '\n[START USER RESPONSE]\n' +
-        lastUserPrompt +
-        '\n[END USER RESPONSE]';
+        Here's the user's response to the assistant regarding the ${relevantInfo.type}:
+        [START USER RESPONSE]
+        ${lastUserPrompt}
+        [END USER RESPONSE] 
+
+        Write short but descriptive sentences for all of the information about the location provided by the user's response to the assistant, following these rules:
+
+        Formatting and structure:
+        - Each sentence must only contain one piece of information.
+        - Write multiple sentences for compound information.
+        - Each sentence must be written on a new line.
+        - Do not embellish the sentences.
+        - Keep the sentences as simple as possible.
+        - Each sentence must make sense on its own, without any external context or reference to other sentences.
+
+        Avoiding bad output:
+        - Only mention information about the ${relevantInfo.type}. 
+        - Do not mention information about the user's response or behavior or intent.
+        - Do not mention any information that hasn't been mentioned by the user.
+        - Do not mention any uncertain information.
+        - Do not omit any information about the ${relevantInfo.type} that has been specified by the user.
+        - Do not provide your own suggestions.
+
+        Conditions for output:
+        - Only include information that is new.
+        - A request for suggestions does not count as new information about the ${relevantInfo.type}.
+        - Any information referenced indirectly by the user should be written explicitly in the output.
+        - Write sentences for all assistant suggestions that are approved by the user.
+        - If no new information was added about the ${relevantInfo.type}, output should be empty.
+    `.trim()
+    .replace(/[^\S\r\n]*([\r\n])[^\S\r\n]*/g, '$1')
+    .replace(/[^\S\r\n]+/g, ' ');
 
     console.log(splitInformationPrompt);
 
@@ -591,7 +617,7 @@ class Route {
                 await mongoClient.close();
             });
         });
-        
+
         const outStream = Readable.toWeb(Readable.from(emitter)) as ReadableStream<any>;
 
         mongoKeepOpen();
