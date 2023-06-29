@@ -19,7 +19,8 @@ class Route {
             _id: uuid(),
             messages: [],
             userId: session.user.id,
-            purpose
+            purpose,
+            locked: false
         };
     
         const conversations = getConversationCollection(mongoClient);

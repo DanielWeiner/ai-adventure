@@ -12,7 +12,7 @@ const NavLink = ({ pageName, nounType, tooltip, icon: Icon } : { pageName: strin
         {...pageName === nounType ? { 'aria-current': 'page' } : {} } 
         className="max-lg:max-h-[16.666666666667vw] p-1 flex flex-1 flex-col font-medium text-xs text-center [&[aria-current=page]]:bg-slate-500 lg:border-b max-lg:border-r lg:last:border-b-0 max lg:last:border-r-0 border-slate-500"
     >
-        <Icon size="auto" className="flex-grow max-h-20" />
+        <Icon size="100%" className="flex-grow max-h-20" />
         <span>
             { tooltip }
         </span> 

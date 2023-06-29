@@ -29,6 +29,7 @@ export interface Conversation {
     userId: string;
     messages: Message[];
     purpose: ConversationPurpose;
+    locked: boolean;
 }
 
 export function getConversationCollection(mongoClient: MongoClient) : Collection<Conversation> {

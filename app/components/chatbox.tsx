@@ -16,7 +16,7 @@ const ChatBubble = ({ role, children } : { children: React.ReactNode, role: stri
                 <h4 className={`text-xs py-1 ${
                     role === 'user' ? 'text-gray-100' : 'text-gray-500'
                 }`}>{role === 'user' ? 'You' : 'AI' }</h4>
-                <p>{children}</p>
+                {children}
             </div>
         </div>
     );
@@ -74,53 +74,57 @@ export default function ChatBox({ conversationId } : {
 
     useEffect(() => {
         if (!pendingChat) return;
-        
-        const end = () => {
-            chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current } ];
-            eventSource?.close();
-            setPendingChat(false);
-            setEventSource(null);
-            setChatLog(chatLogRef.current);
-            setChatResponse("");
-            queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
-        };
-
-        const eventListener = (event: MessageEvent) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.events) {
-                    if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
-                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
-                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
-                    }
-                    return;
-                }
-                if (data.done) {
-                    return end();
-                }
-
-                chatResponseRef.current += data.choices[0].delta.content || "";
-                setChatResponse(chatResponseRef.current);
-            } catch(e) {
-                return end();
-            }
-        };
 
         if (!eventSource) {
             const newEventSource = new EventSource(`/api/conversation/${conversationId}/chat`);
 
-            
+            function onMessage(event: MessageEvent) {
+                const end = () => {
+                    chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current } ];
+                    setPendingChat(false);
+                    setEventSource(eventSource => {
+                        if (!eventSource) return null;
+                        eventSource.removeEventListener('message', onMessage);
+                        eventSource.close();
+                        return null;
+                    });
+                    
+                    setChatLog(chatLogRef.current);
+                    setChatResponse("");
+                    queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
+                };
+                
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.events) {
+                        if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
+                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
+                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
+                        }
+                        return;
+                    }
+                    if (data.done) {
+                        return end();
+                    }
+    
+                    chatResponseRef.current += data.choices[0].delta.content || "";
+                    setChatResponse(chatResponseRef.current);
+                } catch(e) {
+                    return end();
+                }
+            };
+
+            newEventSource.addEventListener('message', onMessage);
             setEventSource(newEventSource);
             setPendingChat(true);
+            
             return;
         }
-        eventSource.addEventListener('message', eventListener);
-        return () => eventSource.removeEventListener('message', eventListener);
     }, [ setPendingChat, pendingChat, eventSource, setEventSource, chatResponseRef, setChatResponse, chatLog, setChatLog, conversationId, noun?._id, nounType, queryClient, sessionToken]);
 
     useEffect(() => {
         scroller.current?.scrollTo(0, 999999999);
-    }, [pendingChat, scroller, chatLog, chatResponse])
+    }, [pendingChat, scroller, chatLog, chatResponse]);
 
     return (
         <section className="flex flex-col absolute top-0 left-0 right-0 bottom-0">

@@ -498,9 +498,11 @@ class Route {
         const conversations = getConversationCollection(mongoClient);
         const conversation = await conversations.findOne({ '_id': conversationId, userId: session.user.id });
     
-        if (!conversation) {
+        if (!conversation || conversation.locked) {
             return NextResponse.json('Bad Request', { status: 400 });
         }
+
+        await conversations.updateOne({ _id: conversationId },  { $set: { locked: true } });
     
         const { messages, purpose } = conversation;
     
@@ -513,6 +515,7 @@ class Route {
         const relevantInfoString = listRelevantInformation(relevantInfo);
 
         const emitter = new SSEEmitter<Uint8Array>();
+        
         emitter.process(async () => {
             await Promise.all([
                 (async () => {
@@ -578,13 +581,19 @@ class Route {
                         }
                     }
                 })()
-            ]);
-            await mongoClient.close();
-            emitter.push(encodeEvent(JSON.stringify({ done: true })));
+            ]).then(() => {
+                emitter.push(encodeEvent(JSON.stringify({ done: true })));
+            }).catch(async e => {
+                console.error(e);
+                emitter.push(encodeEvent(JSON.stringify({ done: true, error: e.toString() })));
+            }).finally(async () => {
+                await conversations.updateOne({ _id: conversationId }, { $set: { locked: false } });
+                await mongoClient.close();
+            });
         });
-    
+        
         const outStream = Readable.toWeb(Readable.from(emitter)) as ReadableStream<any>;
-    
+
         mongoKeepOpen();
 
         return new NextResponse(outStream, {

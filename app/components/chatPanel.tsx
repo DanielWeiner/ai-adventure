@@ -1,7 +1,7 @@
 'use client';
 
 import { Noun, NounType } from "@/app/api/noun";
-import ChatBox from "@/app/components/chatbox";
+import ChatBox from "@/app/components/chatBox";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -220,7 +220,7 @@ export default function ChatPanel() {
                 onClick={() => setDetailsShown(drawerOpen => !drawerOpen)} 
                 className="lg:hidden cursor-pointer flex flex-col h-full max-h-full justify-center bg-slate-400 text-white w-4 shadow-lg z-10"
             >
-                <LeftChevronIcon className={`transition-transform duration-150 ${detailsShown ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="auto"/>
+                <LeftChevronIcon className={`transition-transform duration-150 ${detailsShown ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="100%"/>
             </div>
             <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem)] bg-slate-100">
                 {noun ? <div>
