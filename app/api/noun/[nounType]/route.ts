@@ -33,7 +33,8 @@ class Route {
                 context: nounType,
                 type: 'create'
             },
-            messages: []
+            messages: [],
+            locked: false
         };
         await conversations.insertOne(conversation);
     
