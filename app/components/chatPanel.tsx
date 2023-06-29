@@ -225,10 +225,10 @@ export default function ChatPanel() {
             <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem)] bg-slate-100">
                 {noun ? <div>
                     <p className="text-center font-bold text-xl py-2">{noun.name || <span className="text-slate-600 italic font-medium">unnamed {nounType}</span>}</p>
-                    <div className="flex justify-center w-full mt-5">{ icons[nounType as NounType]('100') }</div>
+                    <div className="flex justify-center w-full mt-5">{icons[nounType as NounType]('100') }</div>
                     <p className="text-center font-medium text-lg pb-5">{ucFirst(nounType)}</p>
 
-                    <dl className="grid grid-cols-[repeat(2,_max-content)] px-1 py-2">
+                    <dl className="grid grid-cols-[max-content,_minmax(0,_1fr)] px-1 py-2">
                         {
                             Object.entries(noun.namedAttributes).map(([key, value]) => (
                                 <>
