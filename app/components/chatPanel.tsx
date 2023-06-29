@@ -1,7 +1,7 @@
 'use client';
 
 import { Noun, NounType } from "@/app/api/noun";
-import ChatBox from "@/app/components/chatBox";
+import ChatBox from "@/app/components/chatbox";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

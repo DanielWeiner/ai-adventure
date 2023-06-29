@@ -56,11 +56,11 @@ type UserIntents = {
 const intents : UserIntents = {
     create: {
         setName: context => ({
-            description: `The ${context} is given a name.`,
+            description: `The name has been set for this ${context}.`,
             data: '["setName","<name>"]'
         }),
         setNamedProperties: context => ({
-            description: `Named properties that are useful for categorizing a ${context} have been set for this ${context}.`,
+            description: `Properties, excluding the name of the ${context}, have been set for this ${context}.`,
             data: '["setNamedProperties","<first property name>","<first property value>","<next property name>","<next property value>", ... ,"<last property name>","<last property value>"]',
             notes: `Property names must be plain English labels, as short as possible, without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. Multiple values for a single named property should be in the form of comma-delimited and spaced strings. Named properties must not duplicate the information in any new or existing unnamed attributes.`
         }),
@@ -107,7 +107,7 @@ const systemPrompts : ContextPrompts = {
 function calculateIntentList<T extends ConversationPurposeType>(conversationType: T, context: ConversationContext[T]) {
     return [...Object.values(intents[conversationType])].map((intentFn, i) => {
         const { description, data, notes } = intentFn(context);        
-        return `${i + 1}. Intent: ${description}\nOutput: [...<other intents>...,${data},...<other intents>...]${notes ? `\n${notes}` : ''}\n`
+        return `${i + 1}. Intent: ${description}\nOutput: [...<other intents>...,${data},...<other intents>...]${notes ? `\nRules: ${notes}` : ''}\n`
     }).concat([
         `${Object.keys(intents[conversationType]).length + 1}. Intent: Unknown or a request for suggestions.\n` +
         'Output: [["none"]]'
@@ -268,7 +268,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
         temperature: 0,
         messages: [
             { 
-                role: 'user',
+                role: 'system',
                 content: messageContent
             }
         ]
