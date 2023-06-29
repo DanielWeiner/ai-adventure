@@ -248,7 +248,11 @@ async function* detectIntents<T extends ConversationPurposeType>(
         ]
     });
     
-    const intentText = result.data.choices[0].message?.content?.trim() || '';
+    const intentText = (result.data.choices[0].message?.content?.trim() || '')
+        // get rid of too many trailing close brackets
+        .replace(/\]\]\]+$/, ']]')
+        // add a missing final close bracket
+        .replace(/(?<!\])]$/, ']]');
     console.log(intentText);
     try {
         const intents = JSON.parse(intentText);
