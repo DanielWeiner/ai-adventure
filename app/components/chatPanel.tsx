@@ -95,7 +95,7 @@ export default function ChatPanel() {
         <div 
             {...swipeableHandlers}
             className={
-                `flex flex-row flex-grow w-screen max-lg:w-[200vw] h-full lg:border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${
+                `flex flex-row flex-grow w-screen max-lg:w-[calc(200vw-1rem)] h-full lg:border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${
                     detailsShown ? 'max-lg:[margin-left:calc(1rem-100vw)]' : ''
                 }`}
         >
