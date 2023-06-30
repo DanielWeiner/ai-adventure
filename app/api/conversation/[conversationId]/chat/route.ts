@@ -62,12 +62,12 @@ const intents : UserIntents = {
         setNamedProperties: context => ({
             description: `Properties, excluding the name of the ${context}, have been set for this ${context}.`,
             data: '["setNamedProperties","<first property name>","<first property value>","<next property name>","<next property value>", ... ,"<last property name>","<last property value>"]',
-            notes: `Property names must be plain English labels, as short as possible, without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. Multiple values for a single named property should be in the form of comma-delimited and spaced strings. Named properties must not duplicate the information in any new or existing unnamed attributes.`
+            notes: `Property names must be plain English labels, as short as possible, without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. If a property has multiple values, concatenate the values with commas, and space them. Named properties must not duplicate the information in any new or existing unnamed attributes.`
         }),
         addAttributes: context => ({
             description: `Miscellaneous details have been provided for this ${context}.`,
             data: '["addAttributes","<first attribute>","<second attribute>", ... ,"<last attribute>"]',
-            notes: `Values should be short but descriptive, without grammar or punctuation. Each value must make sense on its own without context from other new or existing named properties or unnamed attributes. Unnamed attributes must not duplicate the information in any new or existing named properties. Do not combine multiple unnamed attributes into a single string.`
+            notes: `Values should be shortened but descriptive, without grammar or punctuation. Each value must make sense on its own without context from other new or existing named properties or unnamed attributes. Unnamed attributes must not duplicate the information in any new or existing named properties. Do not combine multiple unnamed attributes into a single string.`
         }),
         removeNamedProperties: context => ({
             description: `Named properties of the ${context} have been removed.`,
@@ -160,12 +160,12 @@ async function* detectIntents<T extends ConversationPurposeType>(
     }
 
     const chatMessages = messages.filter(({ role }) => role !== 'system');
-    const fullChatLog = chatMessages.slice(-4).map(({ content, role }) => (`${role.toUpperCase()}: ${content}`)).join('\n');
     const lastAssistantPrompt = chatMessages.slice(-2)[0].content!;
     const lastUserPrompt = chatMessages.slice(-1)[0].content!;
     const relevantInfoStr = listRelevantInformation(relevantInfo);
+    const splitToken = 'SECOND STAGE';
     const splitInformationPrompt = 
-        `You will be analyzing a user prompt regarding a ${relevantInfo.type}.
+        `You will analyze a user prompt regarding a ${relevantInfo.type}, split the information up, output multiple statements about it, then further break down those statements.
         
         Here's the existing information about the ${relevantInfo.type} prior to the prompt. Do not generate results from it.
         [START ${relevantInfo.type.toUpperCase()} INFO]
@@ -182,30 +182,36 @@ async function* detectIntents<T extends ConversationPurposeType>(
         ${lastUserPrompt}
         [END USER RESPONSE] 
 
-        Write short but descriptive sentences for all of the information about the ${relevantInfo.type} provided by the user's response to the assistant, following these rules:
+        First, write the words "FIRST STAGE".
+
+        Next, write short but descriptive sentences for all of the information about the ${relevantInfo.type} provided by the user's response to the assistant, following these rules:
 
         Formatting and structure:
         - Each sentence must only contain one piece of information.
         - Write multiple sentences for compound information.
+        - If no new information about the ${relevantInfo.type} was provided, output the word NONE and nothing before or after. This is very important.
         - Each sentence must be written on a new line.
         - Do not embellish the sentences.
         - Keep the sentences as simple as possible.
         - Each sentence must make sense on its own, without any external context or reference to other sentences.
-
-        Avoiding bad output:
-        - Only mention information about the ${relevantInfo.type}. 
-        - Do not mention information about the user's response or behavior or intent.
-        - Do not mention any information that hasn't been mentioned by the user.
-        - Do not mention any uncertain information.
-        - Do not omit any information about the ${relevantInfo.type} that has been specified by the user.
-        - Do not provide your own suggestions.
 
         Conditions for output:
         - Only include information that is new.
         - A request for suggestions does not count as new information about the ${relevantInfo.type}.
         - Any information referenced indirectly by the user should be written explicitly in the output.
         - Write sentences for all assistant suggestions that are approved by the user.
-        - If no new information was added about the ${relevantInfo.type}, output should be empty.
+
+        Avoiding bad output:
+        - Only mention new information about the ${relevantInfo.type}.
+        - Do not mention any information about the prompt itself.
+        - Do not mention any information that hasn't been mentioned by the user.
+        - Do not mention any uncertain information.
+        - Do not omit any information about the ${relevantInfo.type} that has been specified by the user.
+        - Do not provide your own suggestions.
+
+        When you are done creating sentences, write ${splitToken} on a new line.
+
+        Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
     `.trim()
     .replace(/[^\S\r\n]*([\r\n])[^\S\r\n]*/g, '$1')
     .replace(/[^\S\r\n]+/g, ' ');
@@ -217,13 +223,18 @@ async function* detectIntents<T extends ConversationPurposeType>(
         temperature: 0,
         messages: [
             { 
-                role: 'user',
+                role: 'system',
                 content: splitInformationPrompt
             }
         ]
     });
 
     const infoStatements = (splitInformationResult.data.choices[0].message?.content?.trim() ?? '');
+
+    const brokenDownStatements = infoStatements.includes(splitToken) ? 
+        infoStatements.slice(infoStatements.indexOf(splitToken) + splitToken.length).trim()
+        : infoStatements;
+
     console.log(infoStatements);
 
     const messageContent = 'You are an intent classifier. ' +
@@ -246,11 +257,6 @@ async function* detectIntents<T extends ConversationPurposeType>(
         '\nDo not add any information that hasn\'t been explicitly specified. ' +
         '\n' +
 
-        '\nHere is the previous chat log for context:' + 
-        '\n[START CHAT LOG]\n' + 
-        fullChatLog +
-        '\n[END CHAT LOG]\n' +
-        
         '\nHere is following relevant, up-to-date information for context. Do not infer intents from this.' + 
         '\n[START RELEVANT INFORMATION]\n' + 
         relevantInfoStr +
@@ -258,14 +264,14 @@ async function* detectIntents<T extends ConversationPurposeType>(
 
         '\nAnalyze the intents of just the following statements that describe the user\'s last message:' + 
         '\n[START STATEMENTS]\n' +
-        infoStatements +
+        brokenDownStatements +
         '\n[END STATEMENTS]';
 
     console.log(messageContent);
     
     const result = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
-        temperature: 0,
+        top_p: 0.1,
         messages: [
             { 
                 role: 'system',
@@ -368,8 +374,14 @@ async function setNamedProperties(mongoClient: MongoClient, conversationId: stri
     const displayNamedAttributes  : { [key in string] : string } = {};
     for (let i = 0; i < attributes.length; i += 2) {
         if (attributes[i] && attributes[i+1]) {
-            namedAttrs[`namedAttributes.${attributes[i]}`] = attributes[i+1];
-            displayNamedAttributes[attributes[i]] = attributes[i+1];
+            const key = `namedAttributes.${attributes[i]}`;
+            if (namedAttrs.hasOwnProperty(key)) {
+                namedAttrs[key] += `, ${attributes[i+1]}`;
+                displayNamedAttributes[attributes[i]] += `, ${attributes[i+1]}`;
+            } else {
+                namedAttrs[`namedAttributes.${attributes[i]}`] = attributes[i+1];
+                displayNamedAttributes[attributes[i]] = attributes[i+1];
+            }
         }
     }
 
