@@ -182,7 +182,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
         ${lastUserPrompt}
         [END USER RESPONSE] 
 
-        Write short but descriptive sentences for all of the information about the location provided by the user's response to the assistant, following these rules:
+        Write short but descriptive sentences for all of the information about the ${relevantInfo.type} provided by the user's response to the assistant, following these rules:
 
         Formatting and structure:
         - Each sentence must only contain one piece of information.
