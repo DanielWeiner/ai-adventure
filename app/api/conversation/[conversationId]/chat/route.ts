@@ -56,11 +56,11 @@ type UserIntents = {
 const intents : UserIntents = {
     create: {
         setName: context => ({
-            description: `The name has been set for this ${context}.`,
+            description: `The ${context} is given a name.`,
             data: '["setName","<name>"]'
         }),
         setNamedProperties: context => ({
-            description: `Properties, excluding the name of the ${context}, have been set for this ${context}.`,
+            description: `Properties, aside from the name of the ${context}, have been set for this ${context}.`,
             data: '["setNamedProperties","<first property name>","<first property value>","<next property name>","<next property value>", ... ,"<last property name>","<last property value>"]',
             notes: `Property names must be plain English labels, as short as possible, without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. If a property has multiple values, concatenate the values with commas, and space them. Named properties must not duplicate the information in any new or existing unnamed attributes.`
         }),
@@ -271,7 +271,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
     
     const result = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
-        top_p: 0.1,
+        temperature: 0,
         messages: [
             { 
                 role: 'system',
