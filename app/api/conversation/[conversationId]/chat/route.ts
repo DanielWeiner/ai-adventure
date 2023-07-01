@@ -190,6 +190,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
         - Each sentence must only contain one piece of information.
         - Write multiple sentences for compound information.
         - If no new information about the ${relevantInfo.type} was provided, output the word NONE and nothing before or after. This is very important.
+        - Make the ${relevantInfo.type} the subject of each sentence, if possible.
         - Each sentence must be written on a new line.
         - Do not embellish the sentences.
         - Keep the sentences as simple as possible.
@@ -211,7 +212,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
 
         When you are done creating sentences, write ${splitToken} on a new line.
 
-        Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
+        Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information, paying special attention to compound information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
     `.trim()
     .replace(/[^\S\r\n]*([\r\n])[^\S\r\n]*/g, '$1')
     .replace(/[^\S\r\n]+/g, ' ');
