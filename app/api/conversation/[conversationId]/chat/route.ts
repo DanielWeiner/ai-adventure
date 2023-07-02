@@ -212,7 +212,7 @@ async function* detectIntents(
 
         When you are done creating sentences, write ${splitToken} on a new line.
 
-        Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information, paying special attention to compound information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
+        Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information, paying special attention to compound information. Do not produce redundant information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
     `.trim()
     .replace(/[^\S\r\n]*([\r\n])[^\S\r\n]*/g, '$1')
     .replace(/[^\S\r\n]+/g, ' ');
@@ -249,6 +249,7 @@ async function* detectIntents(
                     Do not generate redundant intents. 
                     Do not leave out any user-provided information. 
                     Only use the information provided by the user.
+                    The intent content must closely match the information provided by the user.
 
                     Current up-to-date information about the ${relevantInfo.type}:
                     ${relevantInfoStr}
