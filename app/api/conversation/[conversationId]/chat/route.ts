@@ -245,11 +245,16 @@ async function* detectIntents(
             { 
                 role: 'system',
                 content: `
-                    You are an intent classifier. Do not generate redundant intents.
+                    You are an intent classifier. 
+                    Do not generate redundant intents. 
+                    Do not leave out any user-provided information. 
+                    Only use the information provided by the user.
 
                     Current up-to-date information about the ${relevantInfo.type}:
                     ${relevantInfoStr}
-                `
+                `.trim()
+                .replace(/[^\S\r\n]*([\r\n])[^\S\r\n]*/g, '$1')
+                .replace(/[^\S\r\n]+/g, ' ')
             },
             {
                 role: 'user',
@@ -341,7 +346,7 @@ async function* detectIntents(
                                                         type: 'array',
                                                         items: {
                                                             type: 'string',
-                                                            description: `The miscellaneous trait about the ${relevantInfo.type}. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing properties or miscellaneous traits. Do not combine multiple miscellaneous traits into a single string.`
+                                                            description: `The miscellaneous trait describing the ${relevantInfo.type}. The trait must be short but descriptive. The trait must make sense on its own. Do not combine multiple traits into a single string.`
                                                         }
                                                     }
                                                 },
