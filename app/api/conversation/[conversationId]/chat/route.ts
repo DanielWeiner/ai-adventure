@@ -204,7 +204,7 @@ async function* detectIntents(
 
         Avoiding bad output:
         - Only mention new information about the ${relevantInfo.type}.
-        - Do not mention any information about the prompt itself, or the user\'s sentiment.
+        - Do not mention any information about the prompt itself, the user, or the user's sentiment.
         - Do not mention any information that hasn't been mentioned by the user.
         - Do not mention any uncertain information.
         - Do not omit any information about the ${relevantInfo.type} that has been provided by the user.
