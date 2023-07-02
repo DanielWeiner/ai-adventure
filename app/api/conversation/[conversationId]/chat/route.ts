@@ -62,11 +62,11 @@ interface SetNamedPropertiesIntent {
     }
 }
 
-interface AddAttributesIntent {
+interface AddTraitsIntent {
     quote: string;
-    intentName: 'addAttributes';
+    intentName: 'addTraits';
     value: {
-        attributes: string[]
+        traits: string[]
     }
 }
 
@@ -78,27 +78,27 @@ interface RemoveNamedPropertiesIntent {
     }
 }
 
-interface RemoveAttributesIntent {
+interface RemoveTraitsIntent {
     quote: string;
-    intentName: 'removeAttributes';
+    intentName: 'removeTraits';
     value: {
-        attributeIndices: number[];
+        traitIndices: number[];
     }
 }
 
 
-interface ReplaceAttributesIntent {
+interface ReplaceTraitsIntent {
     quote: string;
-    intentName: 'replaceAttributes';
+    intentName: 'replaceTraits';
     value: {
-        attributeReplacements: Array<{
-            attributeIndex: number;
+        traitReplacements: Array<{
+            traitIndex: number;
             newValue: string;
         }>
     }
 }
 
-type Intent = SetNameIntent | SetNamedPropertiesIntent | AddAttributesIntent | RemoveNamedPropertiesIntent | RemoveAttributesIntent | ReplaceAttributesIntent;
+type Intent = SetNameIntent | SetNamedPropertiesIntent | AddTraitsIntent | RemoveNamedPropertiesIntent | RemoveTraitsIntent | ReplaceTraitsIntent;
 
 const systemPrompts : ContextPrompts = {
     create: (context: string, firstTime: boolean) => [
@@ -125,7 +125,7 @@ function listRelevantInformation({ name, type, defaultName, attributesMap, attri
             ...[...Object.entries(attributesMap)].map(([key, val]) => `${key}: ${val}`),
         ].join('\n') ] : [],
         ...attributes.length ? [[
-            `\nMiscellaneous attributes for ${name || defaultName}:`,
+            `\nMiscellaneous traits for ${name || defaultName}:`,
             ...attributes.map((val, i) => `${i + 1}. ${val}`)
         ].join('\n') ] : []
     ].join('\n').trim() + '\n';
@@ -284,12 +284,8 @@ async function* detectIntents(
                                 anyOf: [
                                     {
                                         type: 'object',
-                                        description: `Set the name of the ${relevantInfo.type}`,
+                                        description: `The name of the ${relevantInfo.type} has been set`,
                                         properties: {
-                                            quote: {
-                                                type: 'string',
-                                                description: 'Portion of the statements that this intent was inferred from.'
-                                            },
                                             intentName: {
                                                 type: 'string',
                                                 enum: ['setName']
@@ -305,16 +301,12 @@ async function* detectIntents(
                                                 required: ['name']
                                             },
                                         },
-                                        required: ['quote', 'intentName', 'value']
+                                        required: ['intentName', 'value']
                                     },
                                     {
                                         type: 'object',
-                                        description: `Set named properties of the ${relevantInfo.type}, other than the name of the ${relevantInfo.type} itself.`,
+                                        description: `Named properties have been set for the ${relevantInfo.type}, other than the name of the ${relevantInfo.type} itself.`,
                                         properties: {
-                                            quote: {
-                                                type: 'string',
-                                                description: 'Portion of the statements that this intent was inferred from.'
-                                            },
                                             intentName: {
                                                 type: 'string',
                                                 enum: ['setNamedProperties'],
@@ -344,45 +336,36 @@ async function* detectIntents(
                                                 required: ['namedProperties']
                                             }
                                         },
-                                        required: ['quote', 'intentName', 'value']
+                                        required: ['intentName', 'value']
                                     },
                                     {
                                         type: 'object',
-                                        description: `Add miscellaneous, unnamed attributes to the ${relevantInfo.type}`,
+                                        description: `Miscellaneous traits have been added to the ${relevantInfo.type}`,
                                         properties: {
-                                            quote: {
-                                                type: 'string',
-                                                description: 'Portion of the statements that this intent was inferred from.'
-                                            },
                                             intentName: {
                                                 type: 'string',
-                                                enum: ['addAttributes']
+                                                enum: ['addTraits']
                                             },
                                             value: {
                                                 type: 'object',
                                                 properties: {
-                                                    attributes: {
+                                                    traits: {
                                                         type: 'array',
                                                         items: {
                                                             type: 'string',
-                                                            description: `The miscellaneous attribute about the ${relevantInfo.type}. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing named properties or miscellaneous attributes. Do not combine multiple miscellaneous attributes into a single string.`
-                                                        },
-                                                        description: `The miscellaneous attributes of the ${relevantInfo.type} to add. Each attribute should contain one piece of information. Split compound information into multiple attributes.`
+                                                            description: `The miscellaneous trait about the ${relevantInfo.type}. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing named properties or miscellaneous traits. Do not combine multiple miscellaneous traits into a single string.`
+                                                        }
                                                     }
                                                 },
-                                                required: ['attributes']
+                                                required: ['traits']
                                             }
                                         },
-                                        required: ['quote', 'intentName', 'value']
+                                        required: ['intentName', 'value']
                                     },
                                     {
                                         type: 'object',
-                                        description: `Remove named properties from the ${relevantInfo.type}`,
+                                        description: `A named properti from the ${relevantInfo.type}`,
                                         properties: {
-                                            quote: {
-                                                type: 'string',
-                                                description: 'Portion of the statements that this intent was inferred from.'
-                                            },
                                             intentName: {
                                                 type: 'string',
                                                 enum: ['removeNamedProperties']
@@ -395,83 +378,73 @@ async function* detectIntents(
                                                         items: {
                                                             type: 'string',
                                                             description: 'The name of the property to remove'
-                                                        },
-                                                        description: `The names of the properties to remove from the ${relevantInfo.type}`
+                                                        }
                                                     }
                                                 },
                                                 required: ['propertyNames']
                                             }
                                         },
-                                        required: ['quote', 'intentName', 'value']
+                                        required: ['intentName', 'value']
                                     },
                                     {
                                         type: 'object',
-                                        description: `Remove miscellaneous attributes from the ${relevantInfo.type}`,
+                                        description: `Remove miscellaneous traits from the ${relevantInfo.type}`,
                                         properties: {
-                                            quote: {
-                                                type: 'string',
-                                                description: 'Portion of the statements that this intent was inferred from.'
-                                            },
                                             intentName: {
                                                 type: 'string',
-                                                enum: ['removeAttributes']
+                                                enum: ['removeTraits']
                                             },
                                             value: {
                                                 type: 'object',
                                                 properties: {
-                                                    attributeIndices: {
+                                                    traitIndices: {
                                                         type: 'array',
                                                         items: {
                                                             type: 'number',
-                                                            description: 'The zero-indexed index of the attribute to remove'
+                                                            description: 'The zero-indexed index of the trait to remove'
                                                         },
-                                                        description: `The zero-indexed indices of the attributes to remove from the ${relevantInfo.type}`
                                                     }
                                                 },
-                                                required: ['attributeIndices']
+                                                required: ['traitIndices']
                                             }
                                         },
-                                        required: ['quote', 'intentName', 'value']
+                                        required: ['intentName', 'value']
                                     },
                                     {
                                         type: 'object',
-                                        description: `Replace the values of the miscellaneous attributes of the ${relevantInfo.type} at the given indices`,
+                                        description: `Replace the values of the miscellaneous traits of the ${relevantInfo.type} at the given indices`,
                                         properties: {
-                                            quote: {
-                                                type: 'string',
-                                                description: 'Portion of the statements that this intent was inferred from.'
-                                            },
                                             intentName: {
                                                 type: 'string',
-                                                enum: ['replaceAttributes']
+                                                enum: ['replaceTraits']
                                             },
                                             value: {
                                                 type: 'object',
                                                 properties: {
-                                                    attributeReplacements: {
+                                                    traitReplacements: {
                                                         type: 'array',
                                                         items: {
                                                             type: 'object', 
                                                             properties: {
-                                                                attributeIndex: {
+                                                                traitIndex: {
                                                                     type: 'number',
-                                                                    description: 'The zero-indexed index of the attribute'
+                                                                    description: 'The zero-indexed index of the trait'
                                                                 },
                                                                 newValue: {
                                                                     type: 'string',
-                                                                    description: 'The value that the attribute at the given index should be replaced with. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing named properties or miscellaneous attributes.'
+                                                                    description: 'The value that the trait at the given index should be replaced with. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own.'
                                                                 }
                                                             },
-                                                            required: ['attributeIndex', 'newValue'],
-                                                            description: 'The zero-indexed index of the attribute to replace, and its new value'
+                                                            required: ['traitIndex', 'newValue'],
+                                                            description: 'The zero-indexed index of the trait to replace, and its new value'
                                                         },
-                                                        description: `The miscellaneous attributes of the ${relevantInfo.type} to replace`
+                                                        description: `The miscellaneous traits of the ${relevantInfo.type} to replace`
                                                     }
                                                 },
-                                                required: ['attributeReplacements'],
+                                                required: ['traitReplacements'],
                                             }
                                         },
-                                        required: ['quote', 'intentName', 'value']
+                                        required: ['intentName', 'value']
                                     }
                                 ]
                             }
@@ -502,20 +475,20 @@ async function processChatIntents(mongoClient: MongoClient, conversationId: stri
         return setName(mongoClient, conversationId, intent.value.name);
     }
 
-    if (intent.intentName === 'addAttributes') {
-        return addAttributes(mongoClient, conversationId, intent.value.attributes);
+    if (intent.intentName === 'addTraits') {
+        return addTraits(mongoClient, conversationId, intent.value.traits);
     }
 
     if (intent.intentName === 'setNamedProperties') {
         return setNamedProperties(mongoClient, conversationId, intent.value.namedProperties);
     }
 
-    if (intent.intentName === 'replaceAttributes') {
-        return replaceAttributes(mongoClient, conversationId, intent.value.attributeReplacements);
+    if (intent.intentName === 'replaceTraits') {
+        return replaceTraits(mongoClient, conversationId, intent.value.traitReplacements);
     }
 
-    if (intent.intentName === 'removeAttributes') {
-        return removeAttributes(mongoClient, conversationId, intent.value.attributeIndices);
+    if (intent.intentName === 'removeTraits') {
+        return removeTraits(mongoClient, conversationId, intent.value.traitIndices);
     }
 
     if (intent.intentName === 'removeNamedProperties') {
@@ -541,7 +514,7 @@ async function setName(mongoClient: MongoClient, conversationId: string, name: s
     }];
 }
 
-async function addAttributes(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+async function addTraits(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
     const nouns = getNounCollection(mongoClient);
 
     const noun = await nouns.findOne({ conversationId });
@@ -590,7 +563,7 @@ async function setNamedProperties(mongoClient: MongoClient, conversationId: stri
     }];
 }
 
-async function replaceAttributes(mongoClient: MongoClient, conversationId: string, attributeReplacements: ReplaceAttributesIntent['value']['attributeReplacements']) {
+async function replaceTraits(mongoClient: MongoClient, conversationId: string, traitReplacements: ReplaceTraitsIntent['value']['traitReplacements']) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });
@@ -600,10 +573,10 @@ async function replaceAttributes(mongoClient: MongoClient, conversationId: strin
 
     const idxVals : { [key in string] : string } = {};
     const displayIdxVals : { [key in string]: string} = {};
-    for (let i = 0; i < attributeReplacements.length; i ++) {
-        if (noun.attributes[attributeReplacements[i].attributeIndex]) {
-            idxVals[`attributes.${attributeReplacements[i].attributeIndex}`] = attributeReplacements[i].newValue;
-            displayIdxVals[attributeReplacements[i].attributeIndex] = attributeReplacements[i].newValue;
+    for (let i = 0; i < traitReplacements.length; i ++) {
+        if (noun.attributes[traitReplacements[i].traitIndex]) {
+            idxVals[`attributes.${traitReplacements[i].traitIndex}`] = traitReplacements[i].newValue;
+            displayIdxVals[traitReplacements[i].traitIndex] = traitReplacements[i].newValue;
         }
     }
 
@@ -648,7 +621,7 @@ async function removeNamedProperties(mongoClient: MongoClient, conversationId: s
     }];
 }
 
-async function removeAttributes(mongoClient: MongoClient, conversationId: string, indices: number[]) {
+async function removeTraits(mongoClient: MongoClient, conversationId: string, indices: number[]) {
     const nouns = getNounCollection(mongoClient);
 
     const noun = await nouns.findOne({ conversationId });
