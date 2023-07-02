@@ -43,49 +43,62 @@ type RelevantInformation = {
     attributes: string[];
 }
 
-type UserIntents = {
-    [ConversationType in ConversationPurposeType]: {
-        [Intent in string]: (context: string) => ({
-            description: string,
-            data: string,
-            notes?: string
-        })
+interface SetNameIntent {
+    quote: string;
+    intentName: 'setName';
+    value: {
+        name: string;
     }
 }
 
-const intents : UserIntents = {
-    create: {
-        setName: context => ({
-            description: `The ${context} is given a name.`,
-            data: '["setName","<name>"]'
-        }),
-        setNamedProperties: context => ({
-            description: `Properties, aside from the name of the ${context}, have been set for this ${context}.`,
-            data: '["setNamedProperties","<first property name>","<first property value>","<next property name>","<next property value>", ... ,"<last property name>","<last property value>"]',
-            notes: `Property names must be plain English labels, as short as possible, without camel case, special characters or numbers. Spaces in property names are allowed. Property values should be short but descriptive, without grammar or punctuation. Avoid boolean values. If a property has multiple values, concatenate the values with commas, and space them. Named properties must not duplicate the information in any new or existing unnamed attributes.`
-        }),
-        addAttributes: context => ({
-            description: `Miscellaneous details have been provided for this ${context}.`,
-            data: '["addAttributes","<first attribute>","<second attribute>", ... ,"<last attribute>"]',
-            notes: `Values should be shortened but descriptive, without grammar or punctuation. Each value must make sense on its own without context from other new or existing named properties or unnamed attributes. Unnamed attributes must not duplicate the information in any new or existing named properties. Do not combine multiple unnamed attributes into a single string.`
-        }),
-        removeNamedProperties: context => ({
-            description: `Named properties of the ${context} have been removed.`,
-            data: '["removeNamedProperties","<first property name>","<next property name>", ... ,"<last property name>"]'
-        }),
-        removeAttributes: context => ({
-            description: `Unnamed attributes of the ${context} have been removed.`,
-            data: '["removeAttributes","<first index>","<next index>", ... ,"<last index>"]',
-            notes: 'Indices must be zero-indexed.'
-        }),
-        replaceAttributes: context => ({
-            description: `Unnamed attributes of the ${context} have been replaced with new values.`,
-            data: '["replaceAttributes","<first index>","<first attribute>","<next index>","<next attribute>", ... ,"<last index>","<last attribute>"]',
-            notes: 'Indices must be zero-indexed. Values should be short but descriptive, unlabeled string values, without grammar or punctuation.'
-        }),
-    },
-    adventure:{}
-};
+interface SetNamedPropertiesIntent {
+    quote: string;
+    intentName: 'setNamedProperties';
+    value: {
+        namedProperties: Array<{
+            propertyName: string;
+            propertyValue: string;
+        }>;
+    }
+}
+
+interface AddAttributesIntent {
+    quote: string;
+    intentName: 'addAttributes';
+    value: {
+        attributes: string[]
+    }
+}
+
+interface RemoveNamedPropertiesIntent {
+    quote: string;
+    intentName: 'removeNamedProperties';
+    value: {
+        propertyNames: string[];
+    }
+}
+
+interface RemoveAttributesIntent {
+    quote: string;
+    intentName: 'removeAttributes';
+    value: {
+        attributeIndices: number[];
+    }
+}
+
+
+interface ReplaceAttributesIntent {
+    quote: string;
+    intentName: 'replaceAttributes';
+    value: {
+        attributeReplacements: Array<{
+            attributeIndex: number;
+            newValue: string;
+        }>
+    }
+}
+
+type Intent = SetNameIntent | SetNamedPropertiesIntent | AddAttributesIntent | RemoveNamedPropertiesIntent | RemoveAttributesIntent | ReplaceAttributesIntent;
 
 const systemPrompts : ContextPrompts = {
     create: (context: string, firstTime: boolean) => [
@@ -104,28 +117,18 @@ const systemPrompts : ContextPrompts = {
     adventure: () => ''
 };
 
-function calculateIntentList<T extends ConversationPurposeType>(conversationType: T, context: ConversationContext[T]) {
-    return [...Object.values(intents[conversationType])].map((intentFn, i) => {
-        const { description, data, notes } = intentFn(context);        
-        return `${i + 1}. Intent: ${description}\nOutput: [...<other intents>...,${data},...<other intents>...]${notes ? `\nRules: ${notes}` : ''}\n`
-    }).concat([
-        `${Object.keys(intents[conversationType]).length + 1}. Intent: Unknown or a request for suggestions.\n` +
-        'Output: [["none"]]'
-    ]).join('\n')
-}
-
 function listRelevantInformation({ name, type, defaultName, attributesMap, attributes } : RelevantInformation) {
     return [
-        `Name of the ${type}: ${name || 'unknown' }`,
+        `\nName of the ${type}: ${name || 'unknown' }`,
         ...Object.keys(attributesMap).length ? [[
-            `Named properties for ${name || defaultName}:`,
+            `\nNamed properties for ${name || defaultName}:`,
             ...[...Object.entries(attributesMap)].map(([key, val]) => `${key}: ${val}`),
-        ].join('\n') + '\n'] : [],
+        ].join('\n') ] : [],
         ...attributes.length ? [[
-            `Unnamed attributes for ${name || defaultName}:`,
+            `\nMiscellaneous attributes for ${name || defaultName}:`,
             ...attributes.map((val, i) => `${i + 1}. ${val}`)
-        ].join('\n') + '\n'] : []
-    ].join('\n').trim()
+        ].join('\n') ] : []
+    ].join('\n').trim() + '\n';
 }
 
 async function findRelevantInformation<T extends ConversationPurposeType>(conversationId: string, conversationType: T, context: ConversationContext[T]) : Promise<RelevantInformation> {
@@ -147,15 +150,12 @@ async function findRelevantInformation<T extends ConversationPurposeType>(conver
     };
 }
 
-async function* detectIntents<T extends ConversationPurposeType>(
-    openai: OpenAIApi, 
-    conversationType: T, 
-    context: ConversationContext[T], 
+async function* detectIntents(
+    openai: OpenAIApi,
     messages: ChatCompletionRequestMessage[], 
     relevantInfo: RelevantInformation
-) : AsyncGenerator<string[]> {
+) : AsyncGenerator<Intent> {
     if (messages.length < 2) {
-        yield ['none'];
         return;
     }
 
@@ -207,7 +207,7 @@ async function* detectIntents<T extends ConversationPurposeType>(
         - Do not mention any information about the prompt itself.
         - Do not mention any information that hasn't been mentioned by the user.
         - Do not mention any uncertain information.
-        - Do not omit any information about the ${relevantInfo.type} that has been specified by the user.
+        - Do not omit any information about the ${relevantInfo.type} that has been provided by the user.
         - Do not provide your own suggestions.
 
         When you are done creating sentences, write ${splitToken} on a new line.
@@ -239,31 +239,22 @@ async function* detectIntents<T extends ConversationPurposeType>(
     console.log(infoStatements);
 
     const messageContent = 'You are an intent classifier. ' +
-        'You analyze statements about a user\'s last message for intents. ' + 
+        `You analyze statements about a ${relevantInfo.type} for intents. ` + 
         'Each statement may have multiple intents. ' + 
         'Not every possible intent may be inferred. ' + 
         'Try to infer as many intents as possible. ' + 
         'Two inferred intents must not mean the same thing. ' + 
         'Do not add any information that hasn\'t been specified. ' + 
         'Do not add any information that is already present. ' + 
-        'Do not add unknown or incomplete information. ' + 
-        'The syntax of the output is extremely important. ' + 
-        'Make sure that the output is a valid two-dimensional JSON array of strings with no extra or missing characters. ' +
-        'Do not add any extra output before or after that JSON.\n' +
+        'The intent name and value are required. ' +
+        'Do not add unknown or incomplete information.\n' +
 
-        '\nThe following are the possible intents:\n' +
-        calculateIntentList(conversationType, context) +
-        '\n' +
-        '\nDo not remove any information unless specifically requested. ' +
-        '\nDo not add any information that hasn\'t been explicitly specified. ' +
-        '\n' +
-
-        '\nHere is following relevant, up-to-date information for context. Do not infer intents from this.' + 
-        '\n[START RELEVANT INFORMATION]\n' + 
+        `\nHere is the current up-to-date information about the ${relevantInfo.type} for context. Do not infer intents from this.` + 
+        `\n[START ${relevantInfo.type.toUpperCase()} INFORMATION]\n` + 
         relevantInfoStr +
-        '\n[END RELEVANT INFORMATION]\n' +
+        `\n[END ${relevantInfo.type.toUpperCase()} INFORMATION]\n` +
 
-        '\nAnalyze the intents of just the following statements that describe the user\'s last message:' + 
+        '\nAnalyze the intents of just the following statements:' + 
         '\n[START STATEMENTS]\n' +
         brokenDownStatements +
         '\n[END STATEMENTS]';
@@ -278,54 +269,256 @@ async function* detectIntents<T extends ConversationPurposeType>(
                 role: 'system',
                 content: messageContent
             }
+        ],
+        functions: [
+            {
+                name: 'generateIntents',
+                description: `Generate the intents inferred from statements about a user\'s interaction regarding a ${relevantInfo.type}`,
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        intents: {
+                            type: 'array',
+                            items: {
+                                anyOf: [
+                                    {
+                                        type: 'object',
+                                        description: `Set the name of the ${relevantInfo.type}`,
+                                        properties: {
+                                            quote: {
+                                                type: 'string',
+                                                description: 'Portion of the statements that this intent was inferred from.'
+                                            },
+                                            intentName: {
+                                                type: 'string',
+                                                enum: ['setName']
+                                            },
+                                            value: {
+                                                type: 'object',
+                                                properties: {
+                                                    name: {
+                                                        type: 'string',
+                                                        description: `the name of the ${relevantInfo.type}`
+                                                    },
+                                                },
+                                                required: ['name']
+                                            },
+                                        },
+                                        required: ['quote', 'intentName', 'value']
+                                    },
+                                    {
+                                        type: 'object',
+                                        description: `Set named properties of the ${relevantInfo.type}, other than the name of the ${relevantInfo.type} itself.`,
+                                        properties: {
+                                            quote: {
+                                                type: 'string',
+                                                description: 'Portion of the statements that this intent was inferred from.'
+                                            },
+                                            intentName: {
+                                                type: 'string',
+                                                enum: ['setNamedProperties'],
+                                            },
+                                            value: {
+                                                type: 'object',
+                                                properties: {
+                                                    namedProperties: {
+                                                        type: 'array',
+                                                        items: {
+                                                            type: 'object',
+                                                            properties: {
+                                                                propertyName: {
+                                                                    type: 'string',
+                                                                    description: `The name of the property. Must be plain English, as short as possible, without camel case. No special characters or numbers. Spaces are allowed. Cannot represent the name or the ${relevantInfo.type} itself.`
+                                                                },
+                                                                propertyValue: {
+                                                                    type: 'string',
+                                                                    description: 'The value of the property. Must be short but descriptive, without grammar or punctuation. Avoid boolean values. For multiple values, concatenate the values with commas, and space them.'
+                                                                }
+                                                            },
+                                                            required: ['propertyName', 'propertyValue']
+                                                        },
+                                                        description: `The named properties of the ${relevantInfo.type} to set.`,
+                                                    }
+                                                },
+                                                required: ['namedProperties']
+                                            }
+                                        },
+                                        required: ['quote', 'intentName', 'value']
+                                    },
+                                    {
+                                        type: 'object',
+                                        description: `Add miscellaneous, unnamed attributes to the ${relevantInfo.type}`,
+                                        properties: {
+                                            quote: {
+                                                type: 'string',
+                                                description: 'Portion of the statements that this intent was inferred from.'
+                                            },
+                                            intentName: {
+                                                type: 'string',
+                                                enum: ['addAttributes']
+                                            },
+                                            value: {
+                                                type: 'object',
+                                                properties: {
+                                                    attributes: {
+                                                        type: 'array',
+                                                        items: {
+                                                            type: 'string',
+                                                            description: `The miscellaneous attribute about the ${relevantInfo.type}. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing named properties or miscellaneous attributes. Do not combine multiple miscellaneous attributes into a single string.`
+                                                        },
+                                                        description: `The miscellaneous attributes of the ${relevantInfo.type} to add. Each attribute should contain one piece of information. Split compound information into multiple attributes.`
+                                                    }
+                                                },
+                                                required: ['attributes']
+                                            }
+                                        },
+                                        required: ['quote', 'intentName', 'value']
+                                    },
+                                    {
+                                        type: 'object',
+                                        description: `Remove named properties from the ${relevantInfo.type}`,
+                                        properties: {
+                                            quote: {
+                                                type: 'string',
+                                                description: 'Portion of the statements that this intent was inferred from.'
+                                            },
+                                            intentName: {
+                                                type: 'string',
+                                                enum: ['removeNamedProperties']
+                                            },
+                                            value: {
+                                                type: 'object',
+                                                properties: {
+                                                    propertyNames: {
+                                                        type: 'array',
+                                                        items: {
+                                                            type: 'string',
+                                                            description: 'The name of the property to remove'
+                                                        },
+                                                        description: `The names of the properties to remove from the ${relevantInfo.type}`
+                                                    }
+                                                },
+                                                required: ['propertyNames']
+                                            }
+                                        },
+                                        required: ['quote', 'intentName', 'value']
+                                    },
+                                    {
+                                        type: 'object',
+                                        description: `Remove miscellaneous attributes from the ${relevantInfo.type}`,
+                                        properties: {
+                                            quote: {
+                                                type: 'string',
+                                                description: 'Portion of the statements that this intent was inferred from.'
+                                            },
+                                            intentName: {
+                                                type: 'string',
+                                                enum: ['removeAttributes']
+                                            },
+                                            value: {
+                                                type: 'object',
+                                                properties: {
+                                                    attributeIndices: {
+                                                        type: 'array',
+                                                        items: {
+                                                            type: 'number',
+                                                            description: 'The zero-indexed index of the attribute to remove'
+                                                        },
+                                                        description: `The zero-indexed indices of the attributes to remove from the ${relevantInfo.type}`
+                                                    }
+                                                },
+                                                required: ['attributeIndices']
+                                            }
+                                        },
+                                        required: ['quote', 'intentName', 'value']
+                                    },
+                                    {
+                                        type: 'object',
+                                        description: `Replace the values of the miscellaneous attributes of the ${relevantInfo.type} at the given indices`,
+                                        properties: {
+                                            quote: {
+                                                type: 'string',
+                                                description: 'Portion of the statements that this intent was inferred from.'
+                                            },
+                                            intentName: {
+                                                type: 'string',
+                                                enum: ['replaceAttributes']
+                                            },
+                                            value: {
+                                                type: 'object',
+                                                properties: {
+                                                    attributeReplacements: {
+                                                        type: 'array',
+                                                        items: {
+                                                            type: 'object', 
+                                                            properties: {
+                                                                attributeIndex: {
+                                                                    type: 'number',
+                                                                    description: 'The zero-indexed index of the attribute'
+                                                                },
+                                                                newValue: {
+                                                                    type: 'string',
+                                                                    description: 'The value that the attribute at the given index should be replaced with. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing named properties or miscellaneous attributes.'
+                                                                }
+                                                            },
+                                                            required: ['attributeIndex', 'newValue'],
+                                                            description: 'The zero-indexed index of the attribute to replace, and its new value'
+                                                        },
+                                                        description: `The miscellaneous attributes of the ${relevantInfo.type} to replace`
+                                                    }
+                                                },
+                                                required: ['attributeReplacements'],
+                                            }
+                                        },
+                                        required: ['quote', 'intentName', 'value']
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
         ]
     });
-    
-    const intentText = (result.data.choices[0].message?.content?.trim() || '')
-        // get rid of too many trailing close brackets
-        .replace(/\]\]\]+$/, ']]')
-        // add a missing final close bracket
-        .replace(/(?<!\])]$/, ']]');
-    console.log(intentText);
+
     try {
-        const intents = JSON.parse(intentText);
+        const intentsObj = result.data.choices[0].message?.function_call?.arguments || '{}';
+        console.log(intentsObj);
+        const { intents } = JSON.parse(intentsObj) as { intents: Intent[] };
         if (!Array.isArray(intents)) {
-            yield ["none"];
             return;
         }
         for (const intent of intents) {
-            if (Array.isArray(intent) && intent.every(val => typeof val === 'string')) {
-                yield intent;
-            }
+            yield intent;
         }
     } catch {
-        yield ["none"];
+        return;
     }
 }
 
-async function processChatIntents(mongoClient: MongoClient, conversationId: string, intentName: string, ...intentData: string[]) {
-    if (intentName === 'setName') {
-        return setName(mongoClient, conversationId, intentData[0]);
+async function processChatIntents(mongoClient: MongoClient, conversationId: string, intent: Intent) {
+    if (intent.intentName === 'setName') {
+        return setName(mongoClient, conversationId, intent.value.name);
     }
 
-    if (intentName === 'addAttributes') {
-        return addAttributes(mongoClient, conversationId, intentData);
+    if (intent.intentName === 'addAttributes') {
+        return addAttributes(mongoClient, conversationId, intent.value.attributes);
     }
 
-    if (intentName === 'setNamedProperties') {
-        return setNamedProperties(mongoClient, conversationId, intentData);
+    if (intent.intentName === 'setNamedProperties') {
+        return setNamedProperties(mongoClient, conversationId, intent.value.namedProperties);
     }
 
-    if (intentName === 'replaceAttributes') {
-        return replaceAttributes(mongoClient, conversationId, intentData);
+    if (intent.intentName === 'replaceAttributes') {
+        return replaceAttributes(mongoClient, conversationId, intent.value.attributeReplacements);
     }
 
-    if (intentName === 'removeAttributes') {
-        return removeAttributes(mongoClient, conversationId, intentData);
+    if (intent.intentName === 'removeAttributes') {
+        return removeAttributes(mongoClient, conversationId, intent.value.attributeIndices);
     }
 
-    if (intentName === 'removeNamedProperties') {
-        return removeNamedProperties(mongoClient, conversationId, intentData);
+    if (intent.intentName === 'removeNamedProperties') {
+        return removeNamedProperties(mongoClient, conversationId, intent.value.propertyNames);
     }
 
     return [];
@@ -363,7 +556,7 @@ async function addAttributes(mongoClient: MongoClient, conversationId: string, a
     }];
 }
 
-async function setNamedProperties(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+async function setNamedProperties(mongoClient: MongoClient, conversationId: string, namedProperties: SetNamedPropertiesIntent['value']['namedProperties']) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });
@@ -373,16 +566,14 @@ async function setNamedProperties(mongoClient: MongoClient, conversationId: stri
 
     const namedAttrs : { [key in string] : string } = {};
     const displayNamedAttributes  : { [key in string] : string } = {};
-    for (let i = 0; i < attributes.length; i += 2) {
-        if (attributes[i] && attributes[i+1]) {
-            const key = `namedAttributes.${attributes[i]}`;
-            if (namedAttrs.hasOwnProperty(key)) {
-                namedAttrs[key] += `, ${attributes[i+1]}`;
-                displayNamedAttributes[attributes[i]] += `, ${attributes[i+1]}`;
-            } else {
-                namedAttrs[`namedAttributes.${attributes[i]}`] = attributes[i+1];
-                displayNamedAttributes[attributes[i]] = attributes[i+1];
-            }
+    for (let i = 0; i < namedProperties.length; i ++) {
+        const key = `namedAttributes.${namedProperties[i].propertyName}`;
+        if (namedAttrs.hasOwnProperty(key)) {
+            namedAttrs[key] += `, ${namedProperties[i].propertyValue}`;
+            displayNamedAttributes[namedProperties[i].propertyName] += `, ${namedProperties[i].propertyValue}`;
+        } else {
+            namedAttrs[key] = namedProperties[i].propertyValue;
+            displayNamedAttributes[namedProperties[i].propertyName] = namedProperties[i].propertyValue;
         }
     }
 
@@ -398,7 +589,7 @@ async function setNamedProperties(mongoClient: MongoClient, conversationId: stri
     }];
 }
 
-async function replaceAttributes(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+async function replaceAttributes(mongoClient: MongoClient, conversationId: string, attributeReplacements: ReplaceAttributesIntent['value']['attributeReplacements']) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });
@@ -408,10 +599,10 @@ async function replaceAttributes(mongoClient: MongoClient, conversationId: strin
 
     const idxVals : { [key in string] : string } = {};
     const displayIdxVals : { [key in string]: string} = {};
-    for (let i = 0; i < attributes.length; i += 2) {
-        if (attributes[i] && attributes[i+1] && noun.attributes[+attributes[i]]) {
-            idxVals[`attributes.${attributes[i]}`] = attributes[i+1];
-            displayIdxVals[attributes[i]] = attributes[i+1];
+    for (let i = 0; i < attributeReplacements.length; i ++) {
+        if (noun.attributes[attributeReplacements[i].attributeIndex]) {
+            idxVals[`attributes.${attributeReplacements[i].attributeIndex}`] = attributeReplacements[i].newValue;
+            displayIdxVals[attributeReplacements[i].attributeIndex] = attributeReplacements[i].newValue;
         }
     }
 
@@ -427,7 +618,7 @@ async function replaceAttributes(mongoClient: MongoClient, conversationId: strin
     }];
 }
 
-async function removeNamedProperties(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+async function removeNamedProperties(mongoClient: MongoClient, conversationId: string, namedProperties: string[]) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });
@@ -437,10 +628,10 @@ async function removeNamedProperties(mongoClient: MongoClient, conversationId: s
 
     const removedKeys : { [key in string]: 1 } = {};
     const displayRemovedKeys : string[] = [];
-    for (let i = 0; i < attributes.length; i ++) {
-        if (attributes[i] && noun.attributes[i]) {
-            removedKeys[`namedAttributes.${attributes[i]}`] = 1;
-            displayRemovedKeys.push(attributes[i]);
+    for (let i = 0; i < namedProperties.length; i ++) {
+        if (namedProperties[i] && noun.attributes[i]) {
+            removedKeys[`namedAttributes.${namedProperties[i]}`] = 1;
+            displayRemovedKeys.push(namedProperties[i]);
         }
     }
 
@@ -456,7 +647,7 @@ async function removeNamedProperties(mongoClient: MongoClient, conversationId: s
     }];
 }
 
-async function removeAttributes(mongoClient: MongoClient, conversationId: string, indices: string[]) {
+async function removeAttributes(mongoClient: MongoClient, conversationId: string, indices: number[]) {
     const nouns = getNounCollection(mongoClient);
 
     const noun = await nouns.findOne({ conversationId });
@@ -558,11 +749,11 @@ class Route {
         emitter.process(async () => {
             await Promise.all([
                 (async () => {
-                    const intents = detectIntents(openai, purpose.type, purpose.context, [ ...openaiMessages ], relevantInfo);
+                    const intents = detectIntents(openai, [ ...openaiMessages ], relevantInfo);
                     const events : { name: string; description: string }[] = [];
     
                     for await (const intent of intents) {
-                        events.push(...await processChatIntents(mongoClient, conversationId, ...intent as [string]));
+                        events.push(...await processChatIntents(mongoClient, conversationId, intent));
                     }
     
                     if (events.length) {
