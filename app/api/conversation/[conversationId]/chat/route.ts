@@ -51,11 +51,11 @@ interface SetNameIntent {
     }
 }
 
-interface SetNamedPropertiesIntent {
+interface SetPropertiesIntent {
     quote: string;
-    intentName: 'setNamedProperties';
+    intentName: 'setProperties';
     value: {
-        namedProperties: Array<{
+        properties: Array<{
             propertyName: string;
             propertyValue: string;
         }>;
@@ -70,9 +70,9 @@ interface AddTraitsIntent {
     }
 }
 
-interface RemoveNamedPropertiesIntent {
+interface RemovePropertiesIntent {
     quote: string;
-    intentName: 'removeNamedProperties';
+    intentName: 'removeProperties';
     value: {
         propertyNames: string[];
     }
@@ -98,7 +98,7 @@ interface ReplaceTraitsIntent {
     }
 }
 
-type Intent = SetNameIntent | SetNamedPropertiesIntent | AddTraitsIntent | RemoveNamedPropertiesIntent | RemoveTraitsIntent | ReplaceTraitsIntent;
+type Intent = SetNameIntent | SetPropertiesIntent | AddTraitsIntent | RemovePropertiesIntent | RemoveTraitsIntent | ReplaceTraitsIntent;
 
 const systemPrompts : ContextPrompts = {
     create: (context: string, firstTime: boolean) => [
@@ -121,12 +121,12 @@ function listRelevantInformation({ name, type, defaultName, attributesMap, attri
     return [
         `\nName of the ${type}: ${name || 'unknown' }`,
         ...Object.keys(attributesMap).length ? [[
-            `\nNamed properties for ${name || defaultName}:`,
+            `\nProperties of ${name || defaultName}:`,
             ...[...Object.entries(attributesMap)].map(([key, val]) => `${key}: ${val}`),
         ].join('\n') ] : [],
         ...attributes.length ? [[
-            `\nMiscellaneous traits for ${name || defaultName}:`,
-            ...attributes.map((val, i) => `${i + 1}. ${val}`)
+            `\nAdditional traits for ${name || defaultName}:`,
+            ...attributes.map((val, i) => `${i}. ${val}`)
         ].join('\n') ] : []
     ].join('\n').trim() + '\n';
 }
@@ -200,11 +200,11 @@ async function* detectIntents(
         - Only include information that is new.
         - A request for suggestions does not count as new information about the ${relevantInfo.type}.
         - Any information referenced indirectly by the user should be written explicitly in the output.
-        - Write sentences for all assistant suggestions that are approved by the user.
+        - Write sentences for all assistant suggestions that the user approved, omitting the fact that they were approved.
 
         Avoiding bad output:
         - Only mention new information about the ${relevantInfo.type}.
-        - Do not mention any information about the prompt itself.
+        - Do not mention any information about the prompt itself, or the user\'s sentiment.
         - Do not mention any information that hasn't been mentioned by the user.
         - Do not mention any uncertain information.
         - Do not omit any information about the ${relevantInfo.type} that has been provided by the user.
@@ -237,44 +237,32 @@ async function* detectIntents(
         : infoStatements;
 
     console.log(infoStatements);
-
-    const messageContent = 'You are an intent classifier. ' +
-        `You analyze statements about a ${relevantInfo.type} for intents. ` + 
-        'Each statement may have multiple intents. ' + 
-        'Not every possible intent may be inferred. ' + 
-        'Try to infer as many intents as possible. ' + 
-        'Two inferred intents must not mean the same thing. ' + 
-        'Do not add any information that hasn\'t been specified. ' + 
-        'Do not add any information that is already present. ' + 
-        'The intent name and value are required. ' +
-        'Consider each statement individually without context from other statements. ' +
-        'Do not add unknown or incomplete information.\n' +
-
-        `\nHere is the current up-to-date information about the ${relevantInfo.type} for context. Do not infer intents from this.` + 
-        `\n[START ${relevantInfo.type.toUpperCase()} INFORMATION]\n` + 
-        relevantInfoStr +
-        `\n[END ${relevantInfo.type.toUpperCase()} INFORMATION]\n` +
-
-        '\nAnalyze the intents of just the following statements:' + 
-        '\n[START STATEMENTS]\n' +
-        brokenDownStatements +
-        '\n[END STATEMENTS]';
-
-    console.log(messageContent);
     
     const result = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
-        temperature: 0,
+        temperature: 0.5,
         messages: [
             { 
                 role: 'system',
-                content: messageContent
+                content: `
+                    You are an intent classifier. Do not generate redundant intents.
+
+                    Current up-to-date information about the ${relevantInfo.type}:
+                    ${relevantInfo}
+                `
+            },
+            {
+                role: 'user',
+                content: brokenDownStatements
             }
         ],
+        function_call: {
+            name: 'generateIntents'
+        },
         functions: [
             {
                 name: 'generateIntents',
-                description: `Generate the intents inferred from statements about a user\'s interaction regarding a ${relevantInfo.type}`,
+                description: `Generate the intents inferred from statements regarding a ${relevantInfo.type}`,
                 parameters: {
                     type: 'object',
                     properties: {
@@ -305,35 +293,35 @@ async function* detectIntents(
                                     },
                                     {
                                         type: 'object',
-                                        description: `Named properties have been set for the ${relevantInfo.type}, other than the name of the ${relevantInfo.type} itself.`,
+                                        description: `Properties have been set for the ${relevantInfo.type}, excluding the name of the ${relevantInfo.type}.`,
                                         properties: {
                                             intentName: {
                                                 type: 'string',
-                                                enum: ['setNamedProperties'],
+                                                enum: ['setProperties'],
                                             },
                                             value: {
                                                 type: 'object',
                                                 properties: {
-                                                    namedProperties: {
+                                                    properties: {
                                                         type: 'array',
                                                         items: {
                                                             type: 'object',
                                                             properties: {
                                                                 propertyName: {
                                                                     type: 'string',
-                                                                    description: `The name of the property. Must be plain English, as short as possible, without camel case. No special characters or numbers. Spaces are allowed. Cannot represent the name or the ${relevantInfo.type} itself.`
+                                                                    description: `The name of the property. Must be plain English, as short as possible, without camel case. No special characters or numbers. Spaces are allowed. Cannot represent the name of the ${relevantInfo.type}. Cannot represent a boolean value.`
                                                                 },
                                                                 propertyValue: {
                                                                     type: 'string',
-                                                                    description: 'The value of the property. Must be short but descriptive, without grammar or punctuation. Avoid boolean values. For multiple values, concatenate the values with commas, and space them.'
+                                                                    description: 'The value of the property. Must be short but descriptive, without grammar or punctuation. Boolean values are not allowed. For multiple values, concatenate the values with commas, and space them.'
                                                                 }
                                                             },
                                                             required: ['propertyName', 'propertyValue']
                                                         },
-                                                        description: `The named properties of the ${relevantInfo.type} to set.`,
+                                                        description: `The properties of the ${relevantInfo.type} to set.`,
                                                     }
                                                 },
-                                                required: ['namedProperties']
+                                                required: ['properties']
                                             }
                                         },
                                         required: ['intentName', 'value']
@@ -353,7 +341,7 @@ async function* detectIntents(
                                                         type: 'array',
                                                         items: {
                                                             type: 'string',
-                                                            description: `The miscellaneous trait about the ${relevantInfo.type}. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing named properties or miscellaneous traits. Do not combine multiple miscellaneous traits into a single string.`
+                                                            description: `The miscellaneous trait about the ${relevantInfo.type}. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own without context from other new or existing properties or miscellaneous traits. Do not combine multiple miscellaneous traits into a single string.`
                                                         }
                                                     }
                                                 },
@@ -364,11 +352,11 @@ async function* detectIntents(
                                     },
                                     {
                                         type: 'object',
-                                        description: `A named properti from the ${relevantInfo.type}`,
+                                        description: `Remove a property from the ${relevantInfo.type}`,
                                         properties: {
                                             intentName: {
                                                 type: 'string',
-                                                enum: ['removeNamedProperties']
+                                                enum: ['removeProperties']
                                             },
                                             value: {
                                                 type: 'object',
@@ -377,7 +365,7 @@ async function* detectIntents(
                                                         type: 'array',
                                                         items: {
                                                             type: 'string',
-                                                            description: 'The name of the property to remove'
+                                                            description: `The name of the property to remove. Refer to the up-to-date ${relevantInfo.type} information to determine this.`
                                                         }
                                                     }
                                                 },
@@ -401,7 +389,7 @@ async function* detectIntents(
                                                         type: 'array',
                                                         items: {
                                                             type: 'number',
-                                                            description: 'The zero-indexed index of the trait to remove'
+                                                            description: `Index of the trait to remove. Refer to the up-to-date ${relevantInfo.type} information to determine this.`
                                                         },
                                                     }
                                                 },
@@ -428,7 +416,7 @@ async function* detectIntents(
                                                             properties: {
                                                                 traitIndex: {
                                                                     type: 'number',
-                                                                    description: 'The zero-indexed index of the trait'
+                                                                    description: `Index of the trait. Refer to the up-to-date ${relevantInfo.type} information to determine this.`
                                                                 },
                                                                 newValue: {
                                                                     type: 'string',
@@ -436,7 +424,7 @@ async function* detectIntents(
                                                                 }
                                                             },
                                                             required: ['traitIndex', 'newValue'],
-                                                            description: 'The zero-indexed index of the trait to replace, and its new value'
+                                                            description: 'Index of the trait to replace, and its new value'
                                                         },
                                                         description: `The miscellaneous traits of the ${relevantInfo.type} to replace`
                                                     }
@@ -456,6 +444,11 @@ async function* detectIntents(
     });
 
     try {
+        console.log(result.data.choices[0].message?.function_call);
+        if (result.data.choices[0].message?.function_call?.name !== 'generateIntents') {
+            return;
+        }
+
         const intentsObj = result.data.choices[0].message?.function_call?.arguments || '{}';
         console.log(intentsObj);
         const { intents } = JSON.parse(intentsObj) as { intents: Intent[] };
@@ -479,8 +472,8 @@ async function processChatIntents(mongoClient: MongoClient, conversationId: stri
         return addTraits(mongoClient, conversationId, intent.value.traits);
     }
 
-    if (intent.intentName === 'setNamedProperties') {
-        return setNamedProperties(mongoClient, conversationId, intent.value.namedProperties);
+    if (intent.intentName === 'setProperties') {
+        return setProperties(mongoClient, conversationId, intent.value.properties);
     }
 
     if (intent.intentName === 'replaceTraits') {
@@ -491,8 +484,8 @@ async function processChatIntents(mongoClient: MongoClient, conversationId: stri
         return removeTraits(mongoClient, conversationId, intent.value.traitIndices);
     }
 
-    if (intent.intentName === 'removeNamedProperties') {
-        return removeNamedProperties(mongoClient, conversationId, intent.value.propertyNames);
+    if (intent.intentName === 'removeProperties') {
+        return removeProperties(mongoClient, conversationId, intent.value.propertyNames);
     }
 
     return [];
@@ -530,7 +523,7 @@ async function addTraits(mongoClient: MongoClient, conversationId: string, attri
     }];
 }
 
-async function setNamedProperties(mongoClient: MongoClient, conversationId: string, namedProperties: SetNamedPropertiesIntent['value']['namedProperties']) {
+async function setProperties(mongoClient: MongoClient, conversationId: string, properties: SetPropertiesIntent['value']['properties']) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });
@@ -540,14 +533,14 @@ async function setNamedProperties(mongoClient: MongoClient, conversationId: stri
 
     const namedAttrs : { [key in string] : string } = {};
     const displayNamedAttributes  : { [key in string] : string } = {};
-    for (let i = 0; i < namedProperties.length; i ++) {
-        const key = `namedAttributes.${namedProperties[i].propertyName}`;
+    for (let i = 0; i < properties.length; i ++) {
+        const key = `namedAttributes.${properties[i].propertyName}`;
         if (namedAttrs.hasOwnProperty(key)) {
-            namedAttrs[key] += `, ${namedProperties[i].propertyValue}`;
-            displayNamedAttributes[namedProperties[i].propertyName] += `, ${namedProperties[i].propertyValue}`;
+            namedAttrs[key] += `, ${properties[i].propertyValue}`;
+            displayNamedAttributes[properties[i].propertyName] += `, ${properties[i].propertyValue}`;
         } else {
-            namedAttrs[key] = namedProperties[i].propertyValue;
-            displayNamedAttributes[namedProperties[i].propertyName] = namedProperties[i].propertyValue;
+            namedAttrs[key] = properties[i].propertyValue;
+            displayNamedAttributes[properties[i].propertyName] = properties[i].propertyValue;
         }
     }
 
@@ -592,7 +585,7 @@ async function replaceTraits(mongoClient: MongoClient, conversationId: string, t
     }];
 }
 
-async function removeNamedProperties(mongoClient: MongoClient, conversationId: string, namedProperties: string[]) {
+async function removeProperties(mongoClient: MongoClient, conversationId: string, properties: string[]) {
     const nouns = getNounCollection(mongoClient);
     
     const noun = await nouns.findOne({ conversationId });
@@ -602,10 +595,10 @@ async function removeNamedProperties(mongoClient: MongoClient, conversationId: s
 
     const removedKeys : { [key in string]: 1 } = {};
     const displayRemovedKeys : string[] = [];
-    for (let i = 0; i < namedProperties.length; i ++) {
-        if (namedProperties[i] && noun.attributes[i]) {
-            removedKeys[`namedAttributes.${namedProperties[i]}`] = 1;
-            displayRemovedKeys.push(namedProperties[i]);
+    for (let i = 0; i < properties.length; i ++) {
+        if (properties[i] && noun.attributes[i]) {
+            removedKeys[`namedAttributes.${properties[i]}`] = 1;
+            displayRemovedKeys.push(properties[i]);
         }
     }
 
