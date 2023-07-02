@@ -248,7 +248,7 @@ async function* detectIntents(
                     You are an intent classifier. Do not generate redundant intents.
 
                     Current up-to-date information about the ${relevantInfo.type}:
-                    ${relevantInfo}
+                    ${relevantInfoStr}
                 `
             },
             {
