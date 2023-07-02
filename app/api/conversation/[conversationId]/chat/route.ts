@@ -247,6 +247,7 @@ async function* detectIntents(
         'Do not add any information that hasn\'t been specified. ' + 
         'Do not add any information that is already present. ' + 
         'The intent name and value are required. ' +
+        'Consider each statement individually without context from other statements. ' +
         'Do not add unknown or incomplete information.\n' +
 
         `\nHere is the current up-to-date information about the ${relevantInfo.type} for context. Do not infer intents from this.` + 
