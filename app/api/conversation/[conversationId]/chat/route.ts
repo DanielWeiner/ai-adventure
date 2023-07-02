@@ -200,7 +200,7 @@ async function* detectIntents(
         - Only include information that is new.
         - A request for suggestions does not count as new information about the ${relevantInfo.type}.
         - Any information referenced indirectly by the user should be written explicitly in the output.
-        - Write sentences for all assistant suggestions that the user approved, omitting the fact that they were approved.
+        - If the user approves of assistant suggestions, consider it as if those suggestions were said by the user verbatim.
 
         Avoiding bad output:
         - Only mention new information about the ${relevantInfo.type}.
