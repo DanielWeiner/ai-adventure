@@ -443,7 +443,8 @@ async function* detectIntents(
                                 ]
                             }
                         }
-                    }
+                    },
+                    required: ['intents']
                 }
             },
         ]
