@@ -45,7 +45,6 @@ export default function ChatBox({ conversationId } : {
         mutationFn: postMessage,
         onSuccess: ({}, { conversationId }) => {
             queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
-            setLoadingBubble(true);
             setPendingChat(true);
         },
         onMutate: () => {
@@ -61,9 +60,9 @@ export default function ChatBox({ conversationId } : {
         if (!eventSource) {
             setEventSource(new EventSource(`/api/conversation/${conversationId}/chat`));
             setPendingChat(true);
+            setLoadingBubble(true);
         }
-        
-    }, [ setPendingChat, pendingChat, eventSource, setEventSource, conversationId, messagesFetched]);
+    }, [ setPendingChat, setLoadingBubble, pendingChat, eventSource, setEventSource, conversationId, messagesFetched]);
 
     useEffect(() => {
         if (!messagesFetched) return;
