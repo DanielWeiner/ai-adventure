@@ -165,7 +165,7 @@ export default function ChatBox({ conversationId } : {
                 onSubmit={ 
                     (e) => {
                         e.preventDefault();
-                        if (!eventSource) {
+                        if (text.trim() && !eventSource) {
                             postMessageMutation.mutate({ conversationId, message: text });
                         }
                     } 
