@@ -39,8 +39,6 @@ export default function ChatBox({ conversationId } : {
         initialData: remoteChatLog
     });
 
-    console.log(conversationId, messagesFetched, [...messages]);
-
     const [ pendingChat, setPendingChat ] = useState(messages.length === 0);
     const [ loadingBubble, setLoadingBubble ] = useState(pendingChat);
 
