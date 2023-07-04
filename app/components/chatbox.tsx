@@ -30,8 +30,6 @@ export default function ChatBox({ conversationId } : {
     const [ eventSource, setEventSource ] = useState<EventSource | null>(null);
     
     const { sessionToken, messages: remoteChatLog, nounType, noun } = useCreationContext();
-
-    const queryClient = useQueryClient();
     
     const { data: messages, isFetched: messagesFetched } = useQuery({
         queryKey: [`conversation_${sessionToken}_${conversationId}`],
@@ -42,6 +40,7 @@ export default function ChatBox({ conversationId } : {
     const [ pendingChat, setPendingChat ] = useState(messages.length === 0);
     const [ loadingBubble, setLoadingBubble ] = useState(pendingChat);
 
+    const queryClient = useQueryClient();
     const postMessageMutation = useMutation({
         mutationFn: postMessage,
         onSuccess: ({}, { conversationId }) => {
@@ -146,7 +145,7 @@ export default function ChatBox({ conversationId } : {
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
                     <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3`}>
                         {messages.map(({ content, role, id }) => <ChatBubble role={role} key={id}>{content}</ChatBubble>)}
-                        {loadingBubble ? <ChatBubble role="assistant" key="loader">
+                        {loadingBubble ? <ChatBubble role="assistant">
                             <div className="flex flex-row">
                                 <div className="py-2 mx-0.5 animate-bounce">
                                     <div className="w-2 h-2 bg-slate-600 rounded-full"></div>

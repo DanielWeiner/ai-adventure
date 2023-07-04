@@ -93,6 +93,7 @@ export default function ChatPanel() {
 
     return (
         <div 
+            key={noun?._id}
             {...swipeableHandlers}
             className={
                 `flex flex-row flex-grow w-screen max-lg:w-[calc(200vw-1rem)] h-full lg:border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${
@@ -214,7 +215,6 @@ export default function ChatPanel() {
                         }
                     </div>
                 </section>
-                
             </div>
             <div 
                 onClick={() => setDetailsShown(drawerOpen => !drawerOpen)} 
@@ -231,10 +231,10 @@ export default function ChatPanel() {
                     <dl className="grid grid-cols-[max-content,_minmax(0,_1fr)] px-1 py-2">
                         {
                             Object.entries(noun.properties).map(([key, value]) => (
-                                <>
-                                    <dt key={`${key}_dt`} className="mt-1 px-1 text-sm font-medium text-gray-900">{key}</dt>
-                                    <dd key={`${key}_dd`} className="mt-1 px-1 text-sm text-gray-700">{value}</dd>
-                                </>
+                                <Fragment key={key}>
+                                    <dt className="mt-1 px-1 text-sm font-medium text-gray-900">{key}</dt>
+                                    <dd className="mt-1 px-1 text-sm text-gray-700">{value}</dd>
+                                </Fragment>
                             ))
                         }
                     </dl>
@@ -247,6 +247,6 @@ export default function ChatPanel() {
                 </div>: null}
             </section>
         </div>
-    )
+    );
 }
 
