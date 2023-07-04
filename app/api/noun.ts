@@ -12,8 +12,8 @@ export interface Noun {
     conversationId:  string;
     type:            NounType;
     name:            string;
-    attributes:      string[];
-    namedAttributes: {
+    traits:          string[];
+    properties: {
         [key in string]: string
     };
 }

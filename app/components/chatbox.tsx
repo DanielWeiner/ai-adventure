@@ -1,13 +1,14 @@
 'use client';
 
 import { Message } from "@/app/api/conversation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useCreationContext } from "../create/context";
 import { SendIcon } from "./icons";
 
 const fetchJson = async <T,>(url: string, options?: RequestInit) : Promise<T> => (await fetch(`/api/${url}`, options)).json();
 const getMessages = (conversationId: string) => fetchJson<Message[]>(`/conversation/${conversationId}/message`);
+const postMessage = ({ conversationId, message} : {conversationId: string, message: string}) => fetchJson<Message>(`conversation/${conversationId}/message`, { method: 'POST', body: JSON.stringify(message) });
 
 const ChatBubble = ({ role, children } : { children: React.ReactNode, role: string }) => {
     return (
@@ -26,114 +27,128 @@ export default function ChatBox({ conversationId } : {
     conversationId: string
 }) {
     const [ text, setText ] = useState("");
-    const [ chatContents, setChatContents ] = useState("");
     const [ eventSource, setEventSource ] = useState<EventSource | null>(null);
-
+    
     const { sessionToken, messages: remoteChatLog, nounType, noun } = useCreationContext();
-    const chatLogRef = useRef(remoteChatLog);
-    const [ chatLog, setChatLog ] = useState(remoteChatLog);
 
     const queryClient = useQueryClient();
     
-    const { data: messages } = useQuery({
+    const { data: messages, isFetched: messagesFetched } = useQuery({
         queryKey: [`conversation_${sessionToken}_${conversationId}`],
         queryFn: () => getMessages(conversationId),
         initialData: remoteChatLog
     });
 
-    const chatResponseRef = useRef("");
-    const [ chatResponse, setChatResponse ] = useState("");
-    const scroller = useRef<HTMLDivElement | null>(null);
+    console.log(conversationId, messagesFetched, [...messages]);
+
     const [ pendingChat, setPendingChat ] = useState(messages.length === 0);
+    const [ loadingBubble, setLoadingBubble ] = useState(pendingChat);
 
-    useEffect(() => {
-        chatLogRef.current = [...messages];
-        setChatLog(chatLogRef.current);
-    }, [ messages ]);
-
-    useEffect(() => {
-        if (!chatContents) return;
-
-        setChatContents("");
-        chatLogRef.current = [...chatLogRef.current, { role: 'user', content: chatContents }];
-        setChatLog(chatLogRef.current);
-        setText("");
-
-        (async () => {
-            const response = await fetch(`/api/conversation/${conversationId}/message`, {
-                method: "POST",
-                body: JSON.stringify(chatContents)
-            });
-            
-            chatResponseRef.current = "";
-            setChatResponse("");
-            await response.text();
+    const postMessageMutation = useMutation({
+        mutationFn: postMessage,
+        onSuccess: ({}, { conversationId }) => {
+            queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
+            setLoadingBubble(true);
             setPendingChat(true);
-        })();
-    }, [ setPendingChat, chatContents, setChatContents, chatResponseRef, setChatResponse, chatLog, setChatLog, conversationId ]);
+        },
+        onMutate: () => {
+            setText('');
+        }
+    });
+
+    const scroller = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
+        if (!messagesFetched) return;
         if (!pendingChat) return;
-
         if (!eventSource) {
-            const newEventSource = new EventSource(`/api/conversation/${conversationId}/chat`);
+            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat`));
+            setPendingChat(true);
+        }
+        
+    }, [ setPendingChat, pendingChat, eventSource, setEventSource, conversationId, messagesFetched]);
 
-            function onMessage(event: MessageEvent) {
-                const end = () => {
-                    chatLogRef.current = [ ...chatLogRef.current, { role: 'assistant', content: chatResponseRef.current } ];
-                    setPendingChat(false);
-                    setEventSource(eventSource => {
-                        if (!eventSource) return null;
-                        eventSource.removeEventListener('message', onMessage);
-                        eventSource.close();
-                        return null;
-                    });
-                    
-                    setChatLog(chatLogRef.current);
-                    setChatResponse("");
-                    queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
-                };
-                
-                try {
-                    const data = JSON.parse(event.data);
-                    if (data.events) {
-                        if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
-                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
-                            queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
+    useEffect(() => {
+        if (!messagesFetched) return;
+        if (!eventSource) return;
+        const queryKey = `conversation_${sessionToken}_${conversationId}`;
+
+        const onMessage = (event: MessageEvent) => {
+            const end = () => {
+                setEventSource(eventSource => {
+                    if (!eventSource) return null;
+                    eventSource.removeEventListener('message', onMessage);
+                    eventSource.close();
+                    return null;
+                });
+                setPendingChat(false);
+                queryClient.invalidateQueries([queryKey]);
+            };
+            
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.newMessage && typeof data.messageId === 'string') {
+                    queryClient.setQueryData([queryKey], (messages: Message[] | undefined) => {
+                        if (!messages) messages = [];
+
+                        const index = data.after === null ? -1 : messages.findIndex(({ id }) => id === data.after);
+                        const newMessages = [...messages];
+
+                        if (index === -1) {
+                            newMessages.push({ role: 'assistant', content: '', id: data.messageId });
+                        } else {
+                            newMessages.splice(index + 1, 0, { role: 'assistant', content: '', id: data.messageId });
                         }
-                        return;
+
+                        return newMessages;
+                    });
+                    setLoadingBubble(false);
+                    return;
+                }
+
+                if (data.delta && typeof data.messageId === 'string' && typeof data.message === 'string') {
+                    queryClient.setQueryData([queryKey], (messages: Message[] | undefined) => (messages || []).map(({ id, content, ...rest }) => (
+                        id === data.messageId ? {
+                            id,
+                            ...rest,
+                            content: content + data.message
+                        } : { id, content, ...rest }
+                    ))); 
+                    return;
+                }
+
+                if (data.events) {
+                    if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
+                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
+                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
                     }
-                    if (data.done) {
-                        return end();
-                    }
-    
-                    chatResponseRef.current += data.choices[0].delta.content || "";
-                    setChatResponse(chatResponseRef.current);
-                } catch(e) {
+                    return;
+                }
+                if (data.done) {
                     return end();
                 }
-            };
-
-            newEventSource.addEventListener('message', onMessage);
-            setEventSource(newEventSource);
-            setPendingChat(true);
-            
-            return;
+            } catch(e) {
+                console.error(e);
+                return end();
+            }
         }
-    }, [ setPendingChat, pendingChat, eventSource, setEventSource, chatResponseRef, setChatResponse, chatLog, setChatLog, conversationId, noun?._id, nounType, queryClient, sessionToken]);
+
+        eventSource.addEventListener('message', onMessage);
+        return () => eventSource.removeEventListener('message', onMessage);
+    }, [ eventSource, conversationId, setLoadingBubble, sessionToken, noun?._id, nounType, queryClient, setPendingChat, setEventSource, messagesFetched ])
 
     useEffect(() => {
         scroller.current?.scrollTo(0, 999999999);
-    }, [pendingChat, scroller, chatLog, chatResponse]);
+    }, [pendingChat, scroller, messages]);
 
     return (
         <section className="flex flex-col absolute top-0 left-0 right-0 bottom-0">
             <div className="rounded-sm flex-grow overflow-hidden flex flex-col items-stretch [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
                     <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3`}>
-                        {chatLog.map(({ content, role }, i) => <ChatBubble role={role} key={i}>{content}</ChatBubble>)}
-                        {chatResponse ? <ChatBubble role="assistant" key={chatLog.length}>{chatResponse}</ChatBubble> : null}
-                        {pendingChat && !chatResponse ? <ChatBubble role="assistant" key="loader">
+                        {messages.map(({ content, role, id }) => <ChatBubble role={role} key={id}>{content}</ChatBubble>)}
+                        {loadingBubble ? <ChatBubble role="assistant" key="loader">
                             <div className="flex flex-row">
                                 <div className="py-2 mx-0.5 animate-bounce">
                                     <div className="w-2 h-2 bg-slate-600 rounded-full"></div>
@@ -154,14 +169,16 @@ export default function ChatBox({ conversationId } : {
                 onSubmit={ 
                     (e) => {
                         e.preventDefault();
-                        if (!eventSource) { setChatContents(text); }
+                        if (!eventSource) {
+                            postMessageMutation.mutate({ conversationId, message: text });
+                        }
                     } 
                 }>
                     <input 
                         disabled={pendingChat}
                         type="text"
                         className="block flex-grow min-w-0 h-12 text-md border-0 py-1.5 lg:[border-bottom-left-radius:0.375rem] text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600" 
-                        value={ text }
+                        value={text}
                         placeholder="Say something..."
                         onChange={ input => setText(input.target.value) }/>
                     <button disabled={pendingChat} type="submit" className="flex bg-indigo-500 h-12 w-12 min-w-[3rem] lg:[border-bottom-right-radius:0.375rem] text-white justify-center items-center disabled:bg-indigo-300">

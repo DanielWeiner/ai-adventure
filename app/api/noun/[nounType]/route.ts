@@ -43,8 +43,8 @@ class Route {
             userId: session.user.id, 
             type: nounType,
             conversationId: conversation._id,
-            attributes: [],
-            namedAttributes: {},
+            traits: [],
+            properties: {},
             name: ''
         };
     

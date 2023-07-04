@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { NounType } from "./noun";
 
 export interface Message {
+    id: string;
     content: string;
     role: ChatCompletionRequestMessageRoleEnum;
 }

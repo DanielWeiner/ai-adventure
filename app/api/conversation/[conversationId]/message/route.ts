@@ -3,6 +3,7 @@ import { getConversationCollection, Message } from "@/app/api/conversation";
 import { mongo } from "@/app/mongo";
 import { MongoClient } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
+import { v4 as uuid } from "uuid";
 
 class Route {
     @authorize
@@ -20,9 +21,10 @@ class Route {
             return NextResponse.json("Not Found", { status: 404 });
         }
     
-        const newMessage : Message = {
+        const newMessage : Message = {        
+            role: 'user',
             content: message,
-            role: 'user'
+            id: uuid(),
         };
     
         await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });

@@ -44,7 +44,7 @@ class Route {
     @mongo
     async PUT(request: NextRequest, { params: { nounType, nounId, session, mongoClient } } : { params: { session: Session, nounType: NounType, nounId: string, mongoClient: MongoClient } }) {
         const nounInput = await request.json() as Noun;
-        if (!nounInput?.attributes && !nounInput?.name) {
+        if (!nounInput?.traits && !nounInput?.name) {
             return NextResponse.json("Bad Request", { status: 400 });
         }
     

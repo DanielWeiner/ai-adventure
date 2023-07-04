@@ -8,6 +8,7 @@ import { ConversationContext, ConversationPurposeType, getConversationCollection
 import { AxiosResponse } from "axios";
 import { NounType, getConversationNoun, getNounCollection } from "@/app/api/noun";
 import { MongoClient } from "mongodb";
+import { v4 as uuid } from 'uuid';
 
 const defaultHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -37,10 +38,10 @@ type RelevantInformation = {
     type: string;
     name: string; 
     defaultName: string;
-    attributesMap: { 
+    properties: { 
         [key in string]: string;
     }; 
-    attributes: string[];
+    traits: string[];
 }
 
 interface SetNameIntent {
@@ -107,7 +108,7 @@ const systemPrompts : ContextPrompts = {
             `You must start the conversation with "Hi! Let's create a ${context} together."`,
             `Your first and only prompt is for the name of the ${context}, adding some helpful pointers on creating a good name.`,
         ] : [
-            `Always refrain from enumerating the properties and attributes of the ${context} as a list unless specifically asked. ` +
+            `Always refrain from enumerating the properties and traits of the ${context} as a list unless specifically asked. ` +
             'Unless prompted, limit the number suggestions or questions to at most three or four. ' + 
             'The user should be able to provide small, focused answers to your prompts, so don\'t overwhelm the user with questions or suggestions. ' +
             `Your prompt should always elicit more information from the user unless they're satisfied with the ${context} as a whole and have nothing more to add. ` +
@@ -117,36 +118,36 @@ const systemPrompts : ContextPrompts = {
     adventure: () => ''
 };
 
-function listRelevantInformation({ name, type, defaultName, attributesMap, attributes } : RelevantInformation) {
+function listRelevantInformation({ name, type, defaultName, properties, traits } : RelevantInformation) {
     return [
         `\nName of the ${type}: ${name || 'unknown' }`,
-        ...Object.keys(attributesMap).length ? [[
+        ...Object.keys(properties).length ? [[
             `\nProperties of ${name || defaultName}:`,
-            ...[...Object.entries(attributesMap)].map(([key, val]) => `${key}: ${val}`),
+            ...[...Object.entries(properties)].map(([key, val]) => `${key}: ${val}`),
         ].join('\n') ] : [],
-        ...attributes.length ? [[
+        ...traits.length ? [[
             `\nAdditional traits for ${name || defaultName}:`,
-            ...attributes.map((val, i) => `${i}. ${val}`)
+            ...traits.map((val, i) => `${i}. ${val}`)
         ].join('\n') ] : []
     ].join('\n').trim() + '\n';
 }
 
 async function findRelevantInformation<T extends ConversationPurposeType>(conversationId: string, conversationType: T, context: ConversationContext[T]) : Promise<RelevantInformation> {
     if (conversationType === 'adventure') {
-        return { name: '', attributesMap: {}, attributes: [], defaultName: '', type: '' };
+        return { name: '', properties: {}, traits: [], defaultName: '', type: '' };
     }
     const noun = await getConversationNoun(conversationId);
 
     if (!noun) {
-        return { name: '', attributesMap: {}, attributes: [], defaultName: '', type: '' };
+        return { name: '', properties: {}, traits: [], defaultName: '', type: '' };
     }
 
     return {
         defaultName: `The ${context} being created`,
         type: context,
         name: noun.name,
-        attributes: noun.attributes || [],
-        attributesMap: noun.namedAttributes || {}
+        traits: noun.traits || [],
+        properties: noun.properties || {}
     };
 }
 
@@ -514,7 +515,7 @@ async function setName(mongoClient: MongoClient, conversationId: string, name: s
     }];
 }
 
-async function addTraits(mongoClient: MongoClient, conversationId: string, attributes: string[]) {
+async function addTraits(mongoClient: MongoClient, conversationId: string, traits: string[]) {
     const nouns = getNounCollection(mongoClient);
 
     const noun = await nouns.findOne({ conversationId });
@@ -522,11 +523,11 @@ async function addTraits(mongoClient: MongoClient, conversationId: string, attri
         return [];
     }
 
-    await nouns.updateOne({ conversationId }, { $addToSet: { attributes: { $each: attributes } } });
+    await nouns.updateOne({ conversationId }, { $addToSet: { traits: { $each: traits } } });
 
     return [{
         name: 'noun.update',
-        description: `Added [${attributes.map(attr => JSON.stringify(attr)).join(',')}].`
+        description: `Added [${traits.map(trait => JSON.stringify(trait)).join(',')}].`
     }];
 }
 
@@ -538,28 +539,28 @@ async function setProperties(mongoClient: MongoClient, conversationId: string, p
         return [];
     }
 
-    const namedAttrs : { [key in string] : string } = {};
-    const displayNamedAttributes  : { [key in string] : string } = {};
+    const savedProps : { [key in string] : string } = {};
+    const displayProperties  : { [key in string] : string } = {};
     for (let i = 0; i < properties.length; i ++) {
-        const key = `namedAttributes.${properties[i].propertyName}`;
-        if (namedAttrs.hasOwnProperty(key)) {
-            namedAttrs[key] += `, ${properties[i].propertyValue}`;
-            displayNamedAttributes[properties[i].propertyName] += `, ${properties[i].propertyValue}`;
+        const key = `properties.${properties[i].propertyName}`;
+        if (savedProps.hasOwnProperty(key)) {
+            savedProps[key] += `, ${properties[i].propertyValue}`;
+            displayProperties[properties[i].propertyName] += `, ${properties[i].propertyValue}`;
         } else {
-            namedAttrs[key] = properties[i].propertyValue;
-            displayNamedAttributes[properties[i].propertyName] = properties[i].propertyValue;
+            savedProps[key] = properties[i].propertyValue;
+            displayProperties[properties[i].propertyName] = properties[i].propertyValue;
         }
     }
 
-    if (Object.keys(namedAttrs).length === 0) {
+    if (Object.keys(savedProps).length === 0) {
         return [];
     }
 
-    await nouns.updateOne({ conversationId }, { $set: namedAttrs });
+    await nouns.updateOne({ conversationId }, { $set: savedProps });
 
     return [{
         name: 'noun.update',
-        description: `Set [${[...Object.entries(displayNamedAttributes)].map(([key, val]) => JSON.stringify({ [key]: val})).join(',')}].`
+        description: `Set [${[...Object.entries(displayProperties)].map(([key, val]) => JSON.stringify({ [key]: val})).join(',')}].`
     }];
 }
 
@@ -574,8 +575,8 @@ async function replaceTraits(mongoClient: MongoClient, conversationId: string, t
     const idxVals : { [key in string] : string } = {};
     const displayIdxVals : { [key in string]: string} = {};
     for (let i = 0; i < traitReplacements.length; i ++) {
-        if (noun.attributes[traitReplacements[i].traitIndex]) {
-            idxVals[`attributes.${traitReplacements[i].traitIndex}`] = traitReplacements[i].newValue;
+        if (noun.traits[traitReplacements[i].traitIndex]) {
+            idxVals[`traits.${traitReplacements[i].traitIndex}`] = traitReplacements[i].newValue;
             displayIdxVals[traitReplacements[i].traitIndex] = traitReplacements[i].newValue;
         }
     }
@@ -588,7 +589,7 @@ async function replaceTraits(mongoClient: MongoClient, conversationId: string, t
 
     return [{
         name: 'noun.update',
-        description: `Replaced [${[...Object.entries(displayIdxVals)].map(([key, val]) => JSON.stringify([ noun.attributes[+key], val ])).join(',')}].`
+        description: `Replaced [${[...Object.entries(displayIdxVals)].map(([key, val]) => JSON.stringify([ noun.traits[+key], val ])).join(',')}].`
     }];
 }
 
@@ -603,8 +604,8 @@ async function removeProperties(mongoClient: MongoClient, conversationId: string
     const removedKeys : { [key in string]: 1 } = {};
     const displayRemovedKeys : string[] = [];
     for (let i = 0; i < properties.length; i ++) {
-        if (properties[i] && noun.attributes[i]) {
-            removedKeys[`namedAttributes.${properties[i]}`] = 1;
+        if (properties[i] && noun.properties.hasOwnProperty(properties[i])) {
+            removedKeys[`properties.${properties[i]}`] = 1;
             displayRemovedKeys.push(properties[i]);
         }
     }
@@ -617,7 +618,7 @@ async function removeProperties(mongoClient: MongoClient, conversationId: string
 
     return [{
         name: 'noun.update',
-        description: `Removed [${displayRemovedKeys.map(key => JSON.stringify({ [key]: noun.namedAttributes[key] })).join(',')}].`
+        description: `Removed [${displayRemovedKeys.map(key => JSON.stringify({ [key]: noun.properties[key] })).join(',')}].`
     }];
 }
 
@@ -629,20 +630,20 @@ async function removeTraits(mongoClient: MongoClient, conversationId: string, in
         return [];
     }
 
-    const attrs = indices.reduce((attrs, index) => {
+    const traits = indices.reduce((traits, index) => {
         return {
-            ...attrs,
-            [`attributes.${index}`]: 1
+            ...traits,
+            [`traits.${index}`]: 1
         }
     }, {});
 
-    await nouns.updateOne({ conversationId }, { $unset: { ...attrs } });
-    await nouns.updateOne({ conversationId }, { $pull: { attributes: null as any } });
+    await nouns.updateOne({ conversationId }, { $unset: { ...traits } });
+    await nouns.updateOne({ conversationId }, { $pull: { traits: null as any } });
 
     return [ 
         {
             name: 'noun.update',
-            description: `Removed [${indices.map(index => JSON.stringify(noun.attributes[+index])).join(',')}].`
+            description: `Removed [${indices.map(index => JSON.stringify(noun.traits[+index])).join(',')}].`
         } 
     ];
 }
@@ -735,8 +736,9 @@ class Route {
                             $push: { 
                                 messages: { 
                                     $each: events.map(({ description }) => ({
+                                        role: 'system',
                                         content: `EVENT LOG: ${description}`,
-                                        role: 'system'
+                                        id: uuid()
                                     }))
                                 } 
                             } 
@@ -758,7 +760,10 @@ class Route {
                         ]
                     }, { responseType: 'stream' }) as any as AxiosResponse<IncomingMessage>;
     
-                    const newMessage = { role: 'assistant', content: '' } as Message;
+                    const newMessage : Message = { role: 'assistant', content: '', id: uuid() };
+
+                    emitter.push(encodeEvent(JSON.stringify({ newMessage: true, messageId: newMessage.id, after: (messages[messages.length - 1] || {}).id || null })));
+
                     let cachedChunk = '';
                     for await (const chunk of stream) {
                         const chunkStr = cachedChunk + new TextDecoder().decode(chunk);
@@ -778,10 +783,10 @@ class Route {
                                 break;
                             }
     
-                            emitter.push(encodeEvent(event));
-                            
                             const data = JSON.parse(event);
-                            newMessage.content += data.choices[0].delta.content || '';
+                            const delta = data.choices[0].delta.content || '';
+                            emitter.push(encodeEvent(JSON.stringify({ delta: true, messageId: newMessage.id, message: delta })));
+                            newMessage.content += delta;
                         }
                     }
                 })()

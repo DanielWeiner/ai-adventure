@@ -230,7 +230,7 @@ export default function ChatPanel() {
 
                     <dl className="grid grid-cols-[max-content,_minmax(0,_1fr)] px-1 py-2">
                         {
-                            Object.entries(noun.namedAttributes).map(([key, value]) => (
+                            Object.entries(noun.properties).map(([key, value]) => (
                                 <>
                                     <dt key={`${key}_dt`} className="mt-1 px-1 text-sm font-medium text-gray-900">{key}</dt>
                                     <dd key={`${key}_dd`} className="mt-1 px-1 text-sm text-gray-700">{value}</dd>
@@ -241,7 +241,7 @@ export default function ChatPanel() {
 
                     <ul className="list-disc ml-6 text-sm">
                         {
-                            noun.attributes?.map((attr, i) => <li key={i}>{attr}</li>)
+                            noun.traits?.map((trait, i) => <li key={i}>{trait}</li>)
                         }
                     </ul>
                 </div>: null}
