@@ -3,7 +3,6 @@ import { Session, authorize } from "../auth";
 import { v4 as uuid } from "uuid";
 import { Conversation, ConversationPurpose, getConversationCollection } from "../conversation";
 import { mongo } from "@/app/mongo";
-import { revalidateTag } from "next/cache";
 import { MongoClient } from "mongodb";
 
 class Route {
@@ -18,6 +17,7 @@ class Route {
         const conversation : Conversation = {
             _id: uuid(),
             messages: [],
+            events: [],
             userId: session.user.id,
             purpose,
             locked: false

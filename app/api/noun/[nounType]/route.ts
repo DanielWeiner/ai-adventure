@@ -34,6 +34,7 @@ class Route {
                 type: 'create'
             },
             messages: [],
+            events: [],
             locked: false
         };
         await conversations.insertOne(conversation);
