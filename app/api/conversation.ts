@@ -31,13 +31,18 @@ export interface Conversation {
     messages: Message[];
     purpose: ConversationPurpose;
     locked: boolean;
+    events: {
+        after: string;
+        description: string;
+        id: string;
+    }[];
 }
 
 export function getConversationCollection(mongoClient: MongoClient) : Collection<Conversation> {
     return getMongoDatabase(mongoClient).collection<Conversation>('conversations');
 }
 
-export async function getMessages(sessionToken: string, conversationId: string) {
+export async function getMessages(conversationId: string) {
     const response = await fetch(apiUrl(`conversation/${conversationId}/message`), {
         headers: {
             Cookie: cookies().toString()

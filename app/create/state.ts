@@ -33,5 +33,5 @@ export async function generateInitialState({ pageName, nounId } : { pageName: No
         return { sessionToken, nounType: pageName, noun: null, nouns, messages: [] };
     }
 
-    return { sessionToken, nounType: pageName, noun, nouns, messages: await getMessages(sessionToken, noun.conversationId) };
+    return { sessionToken, nounType: pageName, noun, nouns, messages: await getMessages(noun.conversationId) };
 }

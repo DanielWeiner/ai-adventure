@@ -6,9 +6,13 @@ import { ChatCompletionRequestMessage, Configuration, OpenAIApi } from "openai";
 import { Readable } from "stream";
 import { ConversationContext, ConversationPurposeType, getConversationCollection, Message } from "../../../conversation";
 import { AxiosResponse } from "axios";
-import { NounType, getConversationNoun, getNounCollection } from "@/app/api/noun";
+import { NounType, getConversationNoun } from "@/app/api/noun";
 import { MongoClient } from "mongodb";
 import { v4 as uuid } from 'uuid';
+import { processChatIntents } from "@/app/lib/intent/processor";
+import { generateIntentsSchema } from "@/app/lib/intent/schema";
+import { Intent } from "@/app/lib/intent";
+import { systemPrompt, userPrompt } from "@/app/lib/chatPrompt";
 
 const defaultHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -43,63 +47,6 @@ type RelevantInformation = {
     }; 
     traits: string[];
 }
-
-interface SetNameIntent {
-    quote: string;
-    intentName: 'setName';
-    value: {
-        name: string;
-    }
-}
-
-interface SetPropertiesIntent {
-    quote: string;
-    intentName: 'setProperties';
-    value: {
-        properties: Array<{
-            propertyName: string;
-            propertyValue: string;
-        }>;
-    }
-}
-
-interface AddTraitsIntent {
-    quote: string;
-    intentName: 'addTraits';
-    value: {
-        traits: string[]
-    }
-}
-
-interface RemovePropertiesIntent {
-    quote: string;
-    intentName: 'removeProperties';
-    value: {
-        propertyNames: string[];
-    }
-}
-
-interface RemoveTraitsIntent {
-    quote: string;
-    intentName: 'removeTraits';
-    value: {
-        traitIndices: number[];
-    }
-}
-
-
-interface ReplaceTraitsIntent {
-    quote: string;
-    intentName: 'replaceTraits';
-    value: {
-        traitReplacements: Array<{
-            traitIndex: number;
-            newValue: string;
-        }>
-    }
-}
-
-type Intent = SetNameIntent | SetPropertiesIntent | AddTraitsIntent | RemovePropertiesIntent | RemoveTraitsIntent | ReplaceTraitsIntent;
 
 const systemPrompts : ContextPrompts = {
     create: (context: string, firstTime: boolean) => [
@@ -166,68 +113,64 @@ async function* detectIntents(
     const relevantInfoStr = listRelevantInformation(relevantInfo);
     const splitToken = 'SECOND STAGE';
     const splitInformationPrompt = 
-        `You will analyze a user prompt regarding a ${relevantInfo.type}, split the information up, output multiple statements about it, then further break down those statements.
+        systemPrompt`
+            You will analyze a user prompt regarding a ${relevantInfo.type}, split the information up, output multiple statements about it, then further break down those statements.
+            
+            Here's the existing information about the ${relevantInfo.type} prior to the prompt. Do not generate results from it.
+            [START ${relevantInfo.type.toUpperCase()} INFO]
+            ${relevantInfoStr}
+            [END ${relevantInfo.type.toUpperCase()} INFO]
         
-        Here's the existing information about the ${relevantInfo.type} prior to the prompt. Do not generate results from it.
-        [START ${relevantInfo.type.toUpperCase()} INFO]
-        ${relevantInfoStr}
-        [END ${relevantInfo.type.toUpperCase()} INFO]
-    
-        Here's the most recent assistant prompt regarding the ${relevantInfo.type}. Do not generate results from it. 
-        [START ASSISTANT PROMPT]
-        ${lastAssistantPrompt}
-        [END ASSISTANT PROMPT]
+            Here's the most recent assistant prompt regarding the ${relevantInfo.type}. Do not generate results from it. 
+            [START ASSISTANT PROMPT]
+            ${lastAssistantPrompt}
+            [END ASSISTANT PROMPT]
 
-        Here's the user's response to the assistant regarding the ${relevantInfo.type}:
-        [START USER RESPONSE]
-        ${lastUserPrompt}
-        [END USER RESPONSE] 
+            Here's the user's response to the assistant regarding the ${relevantInfo.type}:
+            [START USER RESPONSE]
+            ${lastUserPrompt}
+            [END USER RESPONSE] 
 
-        First, write the words "FIRST STAGE".
+            First, write the words "FIRST STAGE".
 
-        Next, write short but descriptive sentences for all of the information about the ${relevantInfo.type} provided by the user's response to the assistant, following these rules:
+            Next, write short but descriptive sentences for all of the information about the ${relevantInfo.type} provided by the user's response to the assistant, following these rules:
 
-        Formatting and structure:
-        - Each sentence must only contain one piece of information.
-        - Write multiple sentences for compound information.
-        - If no new information about the ${relevantInfo.type} was provided, output the word NONE and nothing before or after. This is very important.
-        - Make the ${relevantInfo.type} the subject of each sentence, if possible.
-        - Each sentence must be written on a new line.
-        - Do not embellish the sentences.
-        - Keep the sentences as simple as possible.
-        - Each sentence must make sense on its own, without any external context or reference to other sentences.
+            Formatting and structure:
+            - Each sentence must only contain one piece of information.
+            - Write multiple sentences for compound information.
+            - If no new information about the ${relevantInfo.type} was provided, output the word NONE and nothing before or after. This is very important.
+            - Make the ${relevantInfo.type} the subject of each sentence, if possible.
+            - Each sentence must be written on a new line.
+            - Do not embellish the sentences.
+            - Keep the sentences as simple as possible.
+            - Each sentence must make sense on its own, without any external context or reference to other sentences.
 
-        Conditions for output:
-        - Only include information that is new.
-        - A request for suggestions does not count as new information about the ${relevantInfo.type}.
-        - Any information referenced indirectly by the user should be written explicitly in the output.
-        - If the user approves of assistant suggestions, consider it as if those suggestions were said by the user verbatim.
+            Conditions for output:
+            - Only include information that is new.
+            - A request for suggestions does not count as new information about the ${relevantInfo.type}.
+            - Any information referenced indirectly by the user should be written explicitly in the output.
+            - If the user approves of assistant suggestions, consider it as if those suggestions were said by the user verbatim.
 
-        Avoiding bad output:
-        - Only mention new information about the ${relevantInfo.type}.
-        - Do not mention any information about the prompt itself, the user, or the user's sentiment.
-        - Do not mention any information that hasn't been mentioned by the user.
-        - Do not mention any uncertain information.
-        - Do not omit any information about the ${relevantInfo.type} that has been provided by the user.
-        - Do not provide your own suggestions.
+            Avoiding bad output:
+            - Only mention new information about the ${relevantInfo.type}.
+            - Do not mention any information about the prompt itself, the user, or the user's sentiment.
+            - Do not mention any information that hasn't been mentioned by the user.
+            - Do not mention any uncertain information.
+            - Do not omit any information about the ${relevantInfo.type} that has been provided by the user.
+            - Do not provide your own suggestions.
 
-        When you are done creating sentences, write ${splitToken} on a new line.
+            When you are done creating sentences, write ${splitToken} on a new line.
 
-        Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information, paying special attention to compound information. Do not produce redundant information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
-    `.trim()
-    .replace(/[^\S\r\n]*([\r\n])[^\S\r\n]*/g, '$1')
-    .replace(/[^\S\r\n]+/g, ' ');
+            Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information, paying special attention to compound information. Do not produce redundant information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
+        `;
 
-    console.log(splitInformationPrompt);
+    console.log(splitInformationPrompt.content);
 
     const splitInformationResult = await openai.createChatCompletion({
         model: "gpt-3.5-turbo",
         temperature: 0,
         messages: [
-            { 
-                role: 'system',
-                content: splitInformationPrompt
-            }
+            splitInformationPrompt
         ]
     });
 
@@ -243,211 +186,23 @@ async function* detectIntents(
         model: "gpt-3.5-turbo",
         temperature: 0.5,
         messages: [
-            { 
-                role: 'system',
-                content: `
-                    You are an intent classifier. 
-                    Do not generate redundant intents. 
-                    Do not leave out any user-provided information. 
-                    Only use the information provided by the user.
-                    The intent content must closely match the information provided by the user.
+            systemPrompt`
+                You are an intent classifier. 
+                Do not generate redundant intents. 
+                Do not leave out any user-provided information. 
+                Only use the information provided by the user.
+                The intent content must closely match the information provided by the user.
 
-                    Current up-to-date information about the ${relevantInfo.type}:
-                    ${relevantInfoStr}
-                `.trim()
-                .replace(/[^\S\r\n]*([\r\n])[^\S\r\n]*/g, '$1')
-                .replace(/[^\S\r\n]+/g, ' ')
-            },
-            {
-                role: 'user',
-                content: brokenDownStatements
-            }
+                Current up-to-date information about the ${relevantInfo.type}:
+                ${relevantInfoStr}
+            `,
+            userPrompt`${brokenDownStatements}`
         ],
         function_call: {
             name: 'generateIntents'
         },
         functions: [
-            {
-                name: 'generateIntents',
-                description: `Generate the intents inferred from statements regarding a ${relevantInfo.type}`,
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        intents: {
-                            type: 'array',
-                            items: {
-                                anyOf: [
-                                    {
-                                        type: 'object',
-                                        description: `The name of the ${relevantInfo.type} has been set`,
-                                        properties: {
-                                            intentName: {
-                                                type: 'string',
-                                                enum: ['setName']
-                                            },
-                                            value: {
-                                                type: 'object',
-                                                properties: {
-                                                    name: {
-                                                        type: 'string',
-                                                        description: `the name of the ${relevantInfo.type}`
-                                                    },
-                                                },
-                                                required: ['name']
-                                            },
-                                        },
-                                        required: ['intentName', 'value']
-                                    },
-                                    {
-                                        type: 'object',
-                                        description: `Properties have been set for the ${relevantInfo.type}, excluding the name of the ${relevantInfo.type}.`,
-                                        properties: {
-                                            intentName: {
-                                                type: 'string',
-                                                enum: ['setProperties'],
-                                            },
-                                            value: {
-                                                type: 'object',
-                                                properties: {
-                                                    properties: {
-                                                        type: 'array',
-                                                        items: {
-                                                            type: 'object',
-                                                            properties: {
-                                                                propertyName: {
-                                                                    type: 'string',
-                                                                    description: `The name of the property. Must be plain English, as short as possible, without camel case. No special characters or numbers. Spaces are allowed. Cannot represent the name of the ${relevantInfo.type}. Cannot represent a boolean value.`
-                                                                },
-                                                                propertyValue: {
-                                                                    type: 'string',
-                                                                    description: 'The value of the property. Must be short but descriptive, without grammar or punctuation. Boolean values are not allowed. For multiple values, concatenate the values with commas, and space them.'
-                                                                }
-                                                            },
-                                                            required: ['propertyName', 'propertyValue']
-                                                        },
-                                                        description: `The properties of the ${relevantInfo.type} to set.`,
-                                                    }
-                                                },
-                                                required: ['properties']
-                                            }
-                                        },
-                                        required: ['intentName', 'value']
-                                    },
-                                    {
-                                        type: 'object',
-                                        description: `Miscellaneous traits have been added to the ${relevantInfo.type}`,
-                                        properties: {
-                                            intentName: {
-                                                type: 'string',
-                                                enum: ['addTraits']
-                                            },
-                                            value: {
-                                                type: 'object',
-                                                properties: {
-                                                    traits: {
-                                                        type: 'array',
-                                                        items: {
-                                                            type: 'string',
-                                                            description: `The miscellaneous trait describing the ${relevantInfo.type}. The trait must be short but descriptive. The trait must make sense on its own. Do not combine multiple traits into a single string.`
-                                                        }
-                                                    }
-                                                },
-                                                required: ['traits']
-                                            }
-                                        },
-                                        required: ['intentName', 'value']
-                                    },
-                                    {
-                                        type: 'object',
-                                        description: `Remove a property from the ${relevantInfo.type}`,
-                                        properties: {
-                                            intentName: {
-                                                type: 'string',
-                                                enum: ['removeProperties']
-                                            },
-                                            value: {
-                                                type: 'object',
-                                                properties: {
-                                                    propertyNames: {
-                                                        type: 'array',
-                                                        items: {
-                                                            type: 'string',
-                                                            description: `The name of the property to remove. Refer to the up-to-date ${relevantInfo.type} information to determine this.`
-                                                        }
-                                                    }
-                                                },
-                                                required: ['propertyNames']
-                                            }
-                                        },
-                                        required: ['intentName', 'value']
-                                    },
-                                    {
-                                        type: 'object',
-                                        description: `Remove miscellaneous traits from the ${relevantInfo.type}`,
-                                        properties: {
-                                            intentName: {
-                                                type: 'string',
-                                                enum: ['removeTraits']
-                                            },
-                                            value: {
-                                                type: 'object',
-                                                properties: {
-                                                    traitIndices: {
-                                                        type: 'array',
-                                                        items: {
-                                                            type: 'number',
-                                                            description: `Index of the trait to remove. Refer to the up-to-date ${relevantInfo.type} information to determine this.`
-                                                        },
-                                                    }
-                                                },
-                                                required: ['traitIndices']
-                                            }
-                                        },
-                                        required: ['intentName', 'value']
-                                    },
-                                    {
-                                        type: 'object',
-                                        description: `Replace the values of the miscellaneous traits of the ${relevantInfo.type} at the given indices`,
-                                        properties: {
-                                            intentName: {
-                                                type: 'string',
-                                                enum: ['replaceTraits']
-                                            },
-                                            value: {
-                                                type: 'object',
-                                                properties: {
-                                                    traitReplacements: {
-                                                        type: 'array',
-                                                        items: {
-                                                            type: 'object', 
-                                                            properties: {
-                                                                traitIndex: {
-                                                                    type: 'number',
-                                                                    description: `Index of the trait. Refer to the up-to-date ${relevantInfo.type} information to determine this.`
-                                                                },
-                                                                newValue: {
-                                                                    type: 'string',
-                                                                    description: 'The value that the trait at the given index should be replaced with. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own.'
-                                                                }
-                                                            },
-                                                            required: ['traitIndex', 'newValue'],
-                                                            description: 'Index of the trait to replace, and its new value'
-                                                        },
-                                                        description: `The miscellaneous traits of the ${relevantInfo.type} to replace`
-                                                    }
-                                                },
-                                                required: ['traitReplacements'],
-                                            }
-                                        },
-                                        required: ['intentName', 'value']
-                                    }
-                                ]
-                            }
-                        }
-                    },
-                    required: ['intents']
-                }
-            },
+            generateIntentsSchema(relevantInfo.type)
         ]
     });
 
@@ -471,182 +226,6 @@ async function* detectIntents(
     }
 }
 
-async function processChatIntents(mongoClient: MongoClient, conversationId: string, intent: Intent) {
-    if (intent.intentName === 'setName') {
-        return setName(mongoClient, conversationId, intent.value.name);
-    }
-
-    if (intent.intentName === 'addTraits') {
-        return addTraits(mongoClient, conversationId, intent.value.traits);
-    }
-
-    if (intent.intentName === 'setProperties') {
-        return setProperties(mongoClient, conversationId, intent.value.properties);
-    }
-
-    if (intent.intentName === 'replaceTraits') {
-        return replaceTraits(mongoClient, conversationId, intent.value.traitReplacements);
-    }
-
-    if (intent.intentName === 'removeTraits') {
-        return removeTraits(mongoClient, conversationId, intent.value.traitIndices);
-    }
-
-    if (intent.intentName === 'removeProperties') {
-        return removeProperties(mongoClient, conversationId, intent.value.propertyNames);
-    }
-
-    return [];
-}
-
-async function setName(mongoClient: MongoClient, conversationId: string, name: string) {
-    const nouns = getNounCollection(mongoClient);
-
-    const noun = await nouns.findOne({ conversationId });
-    if (!noun) {
-        return [];
-    }
-
-    await nouns.updateOne({ conversationId }, { $set: { name } });
-
-    return [{
-        name: 'noun.update',
-        description: `Set name to ${JSON.stringify(name)}.`
-    }];
-}
-
-async function addTraits(mongoClient: MongoClient, conversationId: string, traits: string[]) {
-    const nouns = getNounCollection(mongoClient);
-
-    const noun = await nouns.findOne({ conversationId });
-    if (!noun) {
-        return [];
-    }
-
-    await nouns.updateOne({ conversationId }, { $addToSet: { traits: { $each: traits } } });
-
-    return [{
-        name: 'noun.update',
-        description: `Added [${traits.map(trait => JSON.stringify(trait)).join(',')}].`
-    }];
-}
-
-async function setProperties(mongoClient: MongoClient, conversationId: string, properties: SetPropertiesIntent['value']['properties']) {
-    const nouns = getNounCollection(mongoClient);
-    
-    const noun = await nouns.findOne({ conversationId });
-    if (!noun) {
-        return [];
-    }
-
-    const savedProps : { [key in string] : string } = {};
-    const displayProperties  : { [key in string] : string } = {};
-    for (let i = 0; i < properties.length; i ++) {
-        const key = `properties.${properties[i].propertyName}`;
-        if (savedProps.hasOwnProperty(key)) {
-            savedProps[key] += `, ${properties[i].propertyValue}`;
-            displayProperties[properties[i].propertyName] += `, ${properties[i].propertyValue}`;
-        } else {
-            savedProps[key] = properties[i].propertyValue;
-            displayProperties[properties[i].propertyName] = properties[i].propertyValue;
-        }
-    }
-
-    if (Object.keys(savedProps).length === 0) {
-        return [];
-    }
-
-    await nouns.updateOne({ conversationId }, { $set: savedProps });
-
-    return [{
-        name: 'noun.update',
-        description: `Set [${[...Object.entries(displayProperties)].map(([key, val]) => JSON.stringify({ [key]: val})).join(',')}].`
-    }];
-}
-
-async function replaceTraits(mongoClient: MongoClient, conversationId: string, traitReplacements: ReplaceTraitsIntent['value']['traitReplacements']) {
-    const nouns = getNounCollection(mongoClient);
-    
-    const noun = await nouns.findOne({ conversationId });
-    if (!noun) {
-        return [];
-    }
-
-    const idxVals : { [key in string] : string } = {};
-    const displayIdxVals : { [key in string]: string} = {};
-    for (let i = 0; i < traitReplacements.length; i ++) {
-        if (noun.traits[traitReplacements[i].traitIndex]) {
-            idxVals[`traits.${traitReplacements[i].traitIndex}`] = traitReplacements[i].newValue;
-            displayIdxVals[traitReplacements[i].traitIndex] = traitReplacements[i].newValue;
-        }
-    }
-
-    if (Object.keys(idxVals).length === 0) {
-        return [];
-    }
-
-    await nouns.updateOne({ conversationId }, { $set: idxVals });
-
-    return [{
-        name: 'noun.update',
-        description: `Replaced [${[...Object.entries(displayIdxVals)].map(([key, val]) => JSON.stringify([ noun.traits[+key], val ])).join(',')}].`
-    }];
-}
-
-async function removeProperties(mongoClient: MongoClient, conversationId: string, properties: string[]) {
-    const nouns = getNounCollection(mongoClient);
-    
-    const noun = await nouns.findOne({ conversationId });
-    if (!noun) {
-        return [];
-    }
-
-    const removedKeys : { [key in string]: 1 } = {};
-    const displayRemovedKeys : string[] = [];
-    for (let i = 0; i < properties.length; i ++) {
-        if (properties[i] && noun.properties.hasOwnProperty(properties[i])) {
-            removedKeys[`properties.${properties[i]}`] = 1;
-            displayRemovedKeys.push(properties[i]);
-        }
-    }
-
-    if (Object.keys(removedKeys).length === 0) {
-        return [];
-    }
-
-    await nouns.updateOne({ conversationId }, { $unset: removedKeys });
-
-    return [{
-        name: 'noun.update',
-        description: `Removed [${displayRemovedKeys.map(key => JSON.stringify({ [key]: noun.properties[key] })).join(',')}].`
-    }];
-}
-
-async function removeTraits(mongoClient: MongoClient, conversationId: string, indices: number[]) {
-    const nouns = getNounCollection(mongoClient);
-
-    const noun = await nouns.findOne({ conversationId });
-    if (!noun) {
-        return [];
-    }
-
-    const traits = indices.reduce((traits, index) => {
-        return {
-            ...traits,
-            [`traits.${index}`]: 1
-        }
-    }, {});
-
-    await nouns.updateOne({ conversationId }, { $unset: { ...traits } });
-    await nouns.updateOne({ conversationId }, { $pull: { traits: null as any } });
-
-    return [ 
-        {
-            name: 'noun.update',
-            description: `Removed [${indices.map(index => JSON.stringify(noun.traits[+index])).join(',')}].`
-        } 
-    ];
-}
 
 function encodeEvent(payload: string) {
     return new TextEncoder().encode(`data: ${payload}\n\n`);
@@ -734,10 +313,10 @@ class Route {
                     if (events.length) {
                         await conversations.updateOne({ _id: conversationId }, { 
                             $push: { 
-                                messages: { 
+                                events: { 
                                     $each: events.map(({ description }) => ({
-                                        role: 'system',
-                                        content: `EVENT LOG: ${description}`,
+                                        after: messages[messages.length - 1].id,
+                                        description: `EVENT LOG: ${description}`,
                                         id: uuid()
                                     }))
                                 } 
@@ -752,11 +331,15 @@ class Route {
                         temperature: 0,
                         stream: true,
                         messages: [
-                            { role: 'system', content: systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0) },
+                            systemPrompt`
+                                ${systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0)}
+                                ${openaiMessages.length > 0 ? `
+                                    Current known information about the ${purpose.context}:
+                                    ${relevantInfoString}
+                                    Do not echo this to the user.
+                                ` : ''}
+                            `,
                             ...openaiMessages.slice(-16),
-                            ...openaiMessages.length > 0 ? [
-                                { role: 'system', content: `Current known information about the ${purpose.context}:\n${relevantInfoString}\n\nDo not echo this to the user.` } as const
-                            ] : [],
                         ]
                     }, { responseType: 'stream' }) as any as AxiosResponse<IncomingMessage>;
     
