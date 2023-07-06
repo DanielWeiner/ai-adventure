@@ -41,7 +41,6 @@ type ContextPrompts = {
 type RelevantInformation = {
     type: string;
     name: string; 
-    defaultName: string;
     properties: { 
         [key in string]: string;
     }; 
@@ -65,9 +64,9 @@ const systemPrompts : ContextPrompts = {
     adventure: () => ''
 };
 
-function listRelevantInformation({ name, defaultName, properties, traits } : RelevantInformation) {
+function listRelevantInformation({ name, properties, traits } : RelevantInformation) {
     return [
-        `\nname: ${name || 'unknown' }`,
+        `name: ${name || 'unknown' }`,
         ...[...Object.entries(properties)].map(([key, val]) => `${key}: ${val}`).join('\n'),
         ...traits.map((val) => `- ${val}`).join('\n')
     ].join('\n').trim();
@@ -75,16 +74,15 @@ function listRelevantInformation({ name, defaultName, properties, traits } : Rel
 
 async function findRelevantInformation<T extends ConversationPurposeType>(conversationId: string, conversationType: T, context: ConversationContext[T]) : Promise<RelevantInformation> {
     if (conversationType === 'adventure') {
-        return { name: '', properties: {}, traits: [], defaultName: '', type: '' };
+        return { name: '', properties: {}, traits: [], type: '' };
     }
     const noun = await getConversationNoun(conversationId);
 
     if (!noun) {
-        return { name: '', properties: {}, traits: [], defaultName: '', type: '' };
+        return { name: '', properties: {}, traits: [], type: '' };
     }
 
     return {
-        defaultName: `The ${context} being created`,
         type: context,
         name: noun.name,
         traits: noun.traits || [],
