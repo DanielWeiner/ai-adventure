@@ -123,7 +123,6 @@ async function* detectIntents(
             - Do not add novel information that hasn't been added by the user.
             - Do not leave out any information mentioned by the user.
 
-
             Then, output "${splitToken}".
             - Process each sentence from the FIRST STAGE further a second time to split them into even smaller pieces of information.
             - Output those smaller sentences.
