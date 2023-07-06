@@ -12,7 +12,7 @@ import { v4 as uuid } from 'uuid';
 import { processChatIntents } from "@/app/lib/intent/processor";
 import { generateIntentsSchema } from "@/app/lib/intent/schema";
 import { Intent } from "@/app/lib/intent";
-import { systemPrompt, userPrompt } from "@/app/lib/chatPrompt";
+import { assistantPrompt, systemPrompt, userPrompt } from "@/app/lib/chatPrompt";
 
 const defaultHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -65,18 +65,12 @@ const systemPrompts : ContextPrompts = {
     adventure: () => ''
 };
 
-function listRelevantInformation({ name, type, defaultName, properties, traits } : RelevantInformation) {
+function listRelevantInformation({ name, defaultName, properties, traits } : RelevantInformation) {
     return [
-        `\nName of the ${type}: ${name || 'unknown' }`,
-        ...Object.keys(properties).length ? [[
-            `\nProperties of ${name || defaultName}:`,
-            ...[...Object.entries(properties)].map(([key, val]) => `${key}: ${val}`),
-        ].join('\n') ] : [],
-        ...traits.length ? [[
-            `\nAdditional traits for ${name || defaultName}:`,
-            ...traits.map((val, i) => `${i}. ${val}`)
-        ].join('\n') ] : []
-    ].join('\n').trim() + '\n';
+        `\nname: ${name || 'unknown' }`,
+        ...[...Object.entries(properties)].map(([key, val]) => `${key}: ${val}`).join('\n'),
+        ...traits.map((val) => `- ${val}`).join('\n')
+    ].join('\n').trim();
 }
 
 async function findRelevantInformation<T extends ConversationPurposeType>(conversationId: string, conversationType: T, context: ConversationContext[T]) : Promise<RelevantInformation> {
@@ -113,55 +107,27 @@ async function* detectIntents(
     const relevantInfoStr = listRelevantInformation(relevantInfo);
     const splitToken = 'SECOND STAGE';
     const splitInformationPrompt = 
-        systemPrompt`
-            You will analyze a user prompt regarding a ${relevantInfo.type}, split the information up, output multiple statements about it, then further break down those statements.
+        systemPrompt`            
+            First, you will enter information mode. You will enumerate the current information about a ${relevantInfo.type}. Then you will enter chat mode. You will produce a worldbuilding prompt in chat mode. The user will respond to that in chat mode. Then you will exit chat mode and enter sentence breakdown mode.
+
+            You will then follow these instructions:
             
-            Here's the existing information about the ${relevantInfo.type} prior to the prompt. Do not generate results from it.
-            [START ${relevantInfo.type.toUpperCase()} INFO]
-            ${relevantInfoStr}
-            [END ${relevantInfo.type.toUpperCase()} INFO]
-        
-            Here's the most recent assistant prompt regarding the ${relevantInfo.type}. Do not generate results from it. 
-            [START ASSISTANT PROMPT]
-            ${lastAssistantPrompt}
-            [END ASSISTANT PROMPT]
+            Output "FIRST STAGE".
+            - Summarize the user's response as short, simple sentences on individual lines.
+            - If the user provided no new information about the ${relevantInfo.type}, just output NONE.
+            - Each sentence must contain one piece of information.
+            - Compound information must be split into multiple sentences.
+            - References to the assistant prompt should be written as sentences containing that information.
+            - Ignore requests for suggestions.
+            - Sentences should only be about the ${relevantInfo.type} itself.
+            - Do not add novel information that hasn't been added by the user.
+            - Do not leave out any information mentioned by the user.
 
-            Here's the user's response to the assistant regarding the ${relevantInfo.type}:
-            [START USER RESPONSE]
-            ${lastUserPrompt}
-            [END USER RESPONSE] 
 
-            First, write the words "FIRST STAGE".
-
-            Next, write short but descriptive sentences for all of the information about the ${relevantInfo.type} provided by the user's response to the assistant, following these rules:
-
-            Formatting and structure:
-            - Each sentence must only contain one piece of information.
-            - Write multiple sentences for compound information.
-            - If no new information about the ${relevantInfo.type} was provided, output the word NONE and nothing before or after. This is very important.
-            - Make the ${relevantInfo.type} the subject of each sentence, if possible.
-            - Each sentence must be written on a new line.
-            - Do not embellish the sentences.
-            - Keep the sentences as simple as possible.
-            - Each sentence must make sense on its own, without any external context or reference to other sentences.
-
-            Conditions for output:
-            - Only include information that is new.
-            - A request for suggestions does not count as new information about the ${relevantInfo.type}.
-            - Any information referenced indirectly by the user should be written explicitly in the output.
-            - If the user approves of assistant suggestions, consider it as if those suggestions were said by the user verbatim.
-
-            Avoiding bad output:
-            - Only mention new information about the ${relevantInfo.type}.
-            - Do not mention any information about the prompt itself, the user, or the user's sentiment.
-            - Do not mention any information that hasn't been mentioned by the user.
-            - Do not mention any uncertain information.
-            - Do not omit any information about the ${relevantInfo.type} that has been provided by the user.
-            - Do not provide your own suggestions.
-
-            When you are done creating sentences, write ${splitToken} on a new line.
-
-            Finally, on a new line, split the results of the FIRST STAGE further into even smaller pieces of information, paying special attention to compound information. Do not produce redundant information. Combine the results of the ${splitToken} back into the FIRST STAGE results to ensure they match.
+            Then, output "${splitToken}".
+            - Process each sentence from the FIRST STAGE further a second time to split them into even smaller pieces of information.
+            - Output those smaller sentences.
+            - Merge the sentences together to verify that they match the first stage.
         `;
 
     console.log(splitInformationPrompt.content);
@@ -170,7 +136,13 @@ async function* detectIntents(
         model: "gpt-3.5-turbo",
         temperature: 0,
         messages: [
-            splitInformationPrompt
+            splitInformationPrompt,
+            assistantPrompt`Entering information mode. The following is the current ${relevantInfo.type} information.`,
+            assistantPrompt`${relevantInfoStr}`,
+            assistantPrompt`Exiting information mode. Entering chat mode.`, 
+            assistantPrompt`${lastAssistantPrompt}`,
+            userPrompt`${lastUserPrompt}`,
+            assistantPrompt`Exiting chat mode. Entering sentence breakdown mode.`
         ]
     });
 
