@@ -8,19 +8,28 @@ services:
     volumes:
       - ./data/db:/data/db
       - ./docker-entrypoint-initdb.d/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
-  app:
-    image: node:18
+  ai-queue:
+    image: redis:6.2-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    command: redis-server --save 20 1 --loglevel warning
+    volumes: 
+      - cache:/data
+  ai-queue-server:
+    image: node:18-alpine
     working_dir: /home/node/app
     volumes:
       - ./:/home/node/app
-    ports:
-      - $APP_PORT:$APP_PORT
     env_file:
       - .env
-    environment:
-      - MONGO_HOST=db
-      - APP_HOST=app
-    command: npm run dev
     links:
-      - db
-    user: $USER_GROUP
+      - ai-queue
+    depends_on:
+      - ai-queue
+    environment:
+      - REDIS_URL=redis://ai-queue:6379
+    command: npm run start:ai-queue
+volumes:
+  cache:
+    driver: local

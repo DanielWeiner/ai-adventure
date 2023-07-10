@@ -11,6 +11,7 @@
 # next.js
 /.next/
 /out/
+/.ai-queue/
 
 # production
 /build
@@ -35,4 +36,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-data/db/*
+/data/db/
+/data/elasticmq/
