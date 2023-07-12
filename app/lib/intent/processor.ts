@@ -34,6 +34,7 @@ async function setName(mongoClient: MongoClient, conversationId: string, name: s
     const nouns = getNounCollection(mongoClient);
 
     const noun = await nouns.findOne({ conversationId });
+
     if (!noun) {
         return [];
     }

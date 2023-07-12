@@ -31,21 +31,21 @@ export default function ChatBox({ conversationId } : {
     
     const { sessionToken, messages: remoteChatLog, nounType, noun } = useCreationContext();
     
-    const { data: messages, isFetched: messagesFetched } = useQuery({
+    const { data: messages, isFetched: messagesFetched, fetchStatus } = useQuery({
         queryKey: [`conversation_${sessionToken}_${conversationId}`],
         queryFn: () => getMessages(conversationId),
         initialData: remoteChatLog
     });
 
-    const [ pendingChat, setPendingChat ] = useState(messages.length === 0);
-    const [ loadingBubble, setLoadingBubble ] = useState(pendingChat);
+    const lastMessage = messages[messages.length - 1];
+    const pendingChat = lastMessage.chatPending || lastMessage.intentDetectionPending;
+    const loadingBubble = pendingChat && !lastMessage.content;
 
     const queryClient = useQueryClient();
     const postMessageMutation = useMutation({
         mutationFn: postMessage,
         onSuccess: ({}, { conversationId }) => {
             queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
-            setPendingChat(true);
         },
         onMutate: () => {
             setText('');
@@ -55,17 +55,16 @@ export default function ChatBox({ conversationId } : {
     const scroller = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (!messagesFetched) return;
+        if (!messagesFetched || fetchStatus === 'fetching') return;
         if (!pendingChat) return;
         if (!eventSource) {
+            console.log('setting event source');
             setEventSource(new EventSource(`/api/conversation/${conversationId}/chat`));
-            setPendingChat(true);
-            setLoadingBubble(true);
         }
-    }, [ setPendingChat, setLoadingBubble, pendingChat, eventSource, setEventSource, conversationId, messagesFetched]);
+    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus ]);
 
     useEffect(() => {
-        if (!messagesFetched) return;
+        if (!messagesFetched || fetchStatus === 'fetching') return;
         if (!eventSource) return;
         const queryKey = `conversation_${sessionToken}_${conversationId}`;
 
@@ -77,31 +76,12 @@ export default function ChatBox({ conversationId } : {
                     eventSource.close();
                     return null;
                 });
-                setPendingChat(false);
-                queryClient.invalidateQueries([queryKey]);
+                console.log('invalidating');
+                queryClient.invalidateQueries([ queryKey ]);
             };
             
             try {
                 const data = JSON.parse(event.data);
-
-                if (data.newMessage && typeof data.messageId === 'string') {
-                    queryClient.setQueryData([queryKey], (messages: Message[] | undefined) => {
-                        if (!messages) messages = [];
-
-                        const index = data.after === null ? -1 : messages.findIndex(({ id }) => id === data.after);
-                        const newMessages = [...messages];
-
-                        if (index === -1) {
-                            newMessages.push({ role: 'assistant', content: '', id: data.messageId });
-                        } else {
-                            newMessages.splice(index + 1, 0, { role: 'assistant', content: '', id: data.messageId });
-                        }
-
-                        return newMessages;
-                    });
-                    setLoadingBubble(false);
-                    return;
-                }
 
                 if (data.delta && typeof data.messageId === 'string' && typeof data.message === 'string') {
                     queryClient.setQueryData([queryKey], (messages: Message[] | undefined) => (messages || []).map(({ id, content, ...rest }) => (
@@ -130,9 +110,14 @@ export default function ChatBox({ conversationId } : {
             }
         }
 
+        const onError = (e: any) => console.error(e);
+        eventSource.addEventListener('error', onError);
         eventSource.addEventListener('message', onMessage);
-        return () => eventSource.removeEventListener('message', onMessage);
-    }, [ eventSource, conversationId, setLoadingBubble, sessionToken, noun?._id, nounType, queryClient, setPendingChat, setEventSource, messagesFetched ])
+        return () => {
+            eventSource.removeEventListener('message', onMessage);
+            eventSource.removeEventListener('error', onError)
+        }
+    }, [ eventSource, conversationId, sessionToken, noun?._id, nounType, queryClient, setEventSource, messagesFetched, fetchStatus ])
 
     useEffect(() => {
         scroller.current?.scrollTo(0, 999999999);
@@ -143,7 +128,7 @@ export default function ChatBox({ conversationId } : {
             <div className="rounded-sm flex-grow overflow-hidden flex flex-col items-stretch [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
                     <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3`}>
-                        {messages.map(({ content, role, id }) => <ChatBubble role={role} key={id}>{content}</ChatBubble>)}
+                        {messages.filter(({ chatPending, intentDetectionPending }) => !((chatPending || intentDetectionPending) && loadingBubble)).map(({ content, role, id }) => <ChatBubble role={role} key={id}>{content}</ChatBubble>)}
                         {loadingBubble ? <ChatBubble role="assistant">
                             <div className="flex flex-row">
                                 <div className="py-2 mx-0.5 animate-bounce">

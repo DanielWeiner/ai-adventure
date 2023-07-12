@@ -1,5 +1,5 @@
 import { Session, authorize } from "@/app/api/auth";
-import { getConversationCollection, Message } from "@/app/api/conversation";
+import { findRelevantInformation, getConversationCollection, Message, startAssistantPrompt, startSentenceSplitting } from "@/app/api/conversation";
 import { mongo } from "@/app/mongo";
 import { MongoClient } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
@@ -20,15 +20,24 @@ class Route {
         if (!conversation) {
             return NextResponse.json("Not Found", { status: 404 });
         }
-    
+
         const newMessage : Message = {        
-            role: 'user',
-            content: message,
-            id: uuid(),
+            role:                   'user',
+            content:                message,
+            id:                     uuid(),
+            chatPending:            false,
+            intentDetectionPending: false,
+            lastSeenMessageId:      ''
         };
-    
+
         await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });
-                
+        const { messages, purpose } = (await conversations.findOne({ _id: conversationId }))!;
+        const openaiMessages = messages.map(({ role, content }) => ({ role, content }));
+        const relevantInfo = await findRelevantInformation(conversationId, purpose.type, purpose.context);
+
+        await startAssistantPrompt(mongoClient, conversationId, true, relevantInfo);
+        await startSentenceSplitting(openaiMessages, relevantInfo, conversationId);
+        
         return NextResponse.json("ok");
     }
 

@@ -15,21 +15,20 @@ services:
       - '6379:6379'
     command: redis-server --save 20 1 --loglevel warning
     volumes: 
-      - cache:/data
+      - ./data/redis:/data
   ai-queue-server:
-    image: node:18-alpine
-    working_dir: /home/node/app
-    volumes:
-      - ./:/home/node/app
+    build: 
+      context: "."
+      dockerfile: ai-queue/Dockerfile
     env_file:
       - .env
+    ports:
+      - 8080:80
     links:
       - ai-queue
     depends_on:
       - ai-queue
     environment:
       - REDIS_URL=redis://ai-queue:6379
+      - AI_QUEUE_LOG=1
     command: npm run start:ai-queue
-volumes:
-  cache:
-    driver: local

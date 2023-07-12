@@ -3,8 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Session, authorize } from "../../auth";
 import { v4 as uuid } from 'uuid';
 import { Noun, NounType } from "../../noun";
-import { revalidateTag } from "next/cache";
-import { Conversation, getConversationCollection } from "../../conversation";
+import { Conversation, findRelevantInformation, getConversationCollection, startAssistantPrompt } from "../../conversation";
 import { MongoClient } from "mongodb";
 
 class Route {
@@ -50,6 +49,9 @@ class Route {
         };
     
         await nouns.insertOne(noun);
+
+        const relevantInfo = await findRelevantInformation(conversation._id, conversation.purpose.type, conversation.purpose.context);
+        await startAssistantPrompt(mongoClient, conversation._id, false, relevantInfo);
     
         return NextResponse.json(noun);
     }

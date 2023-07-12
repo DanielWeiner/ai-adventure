@@ -10,6 +10,7 @@ import {
     CreateChatCompletionResponseChoicesInner, 
     OpenAIApi 
 } from "openai";
+import { systemPrompt } from "../app/lib/chatPrompt";
 const { OPENAI_API_KEY } = process.env;
 
 interface ChatCompletionStreamResponseDelta {
@@ -61,7 +62,7 @@ export default class ChatCompleter {
         return this;
     }
 
-    async createFunctionCallCompletion(messages: ChatCompletionRequestMessage[], functionName?: string) : Promise<string> {
+    async createFunctionCallCompletion(messages: ChatCompletionRequestMessage[], functionName?: string) : Promise<any> {
         const response = await this.#openAi.createChatCompletion({
             ...this.#createCompletionConfig(messages),
             ...functionName ? {
@@ -72,7 +73,7 @@ export default class ChatCompleter {
             functions: this.#functions
         });
 
-        return response.data.choices[0].message?.function_call?.arguments || 'null';
+        return JSON.parse(response.data.choices[0].message?.function_call?.arguments || 'null');
     }
 
     async createChatCompletion(messages: ChatCompletionRequestMessage[]) : Promise<string> {
@@ -81,7 +82,7 @@ export default class ChatCompleter {
         return response.data.choices[0].message?.content || '';
     }
 
-    async *generateChatCompletionDeltas(messages: ChatCompletionRequestMessage[]) : AsyncIterable<string> {
+    async *generateChatCompletionDeltas(messages: ChatCompletionRequestMessage[]) : AsyncIterable<{content: string, done: boolean}> {
         const { data: stream } = await this.#openAi.createChatCompletion({
             ...this.#createCompletionConfig(messages),
             stream: true
@@ -106,7 +107,7 @@ export default class ChatCompleter {
                 }
 
                 const eventJSON : ChatCompletionStreamResponse = JSON.parse(event);
-                yield eventJSON.choices[0].delta.content || '';
+                yield { content: eventJSON.choices[0].delta.content || '', done: !!eventJSON.choices[0].finish_reason };
             }
         }
     }
@@ -115,7 +116,7 @@ export default class ChatCompleter {
         return {
             ...this.#config,
             messages: [
-                ...this.#systemMessage ? [{ role: 'system', content: this.#systemMessage } as const] : [],
+                ...this.#systemMessage ? [systemPrompt`${this.#systemMessage}`] : [],
                 ...messages
             ]
         };
