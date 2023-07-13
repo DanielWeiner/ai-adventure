@@ -13,4 +13,6 @@ http.createServer((req, res) => {
         res.writeHead(404, {'Content-Type': 'text/plain'});
         res.end('Not Found');
     }
-}).listen(80, () => `Health check endpoint listening on port 80`);
+}).listen(80, () => {
+    logger.info(`Health check endpoint listening on port 80`)
+});

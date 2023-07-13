@@ -110,12 +110,9 @@ export default function ChatBox({ conversationId } : {
             }
         }
 
-        const onError = (e: any) => console.error(e);
-        eventSource.addEventListener('error', onError);
         eventSource.addEventListener('message', onMessage);
         return () => {
             eventSource.removeEventListener('message', onMessage);
-            eventSource.removeEventListener('error', onError)
         }
     }, [ eventSource, conversationId, sessionToken, noun?._id, nounType, queryClient, setEventSource, messagesFetched, fetchStatus ])
 

@@ -11,12 +11,14 @@ import { Intent } from "../lib/intent";
 import { generateIntentsSchema } from "../lib/intent/schema";
 
 export interface Message {
-    id:                     string;
-    content:                string;
-    role:                   ChatCompletionRequestMessageRoleEnum;
-    chatPending:            boolean;
-    intentDetectionPending: boolean;
-    lastSeenMessageId:      string;
+    id:                        string;
+    content:                   string;
+    role:                      ChatCompletionRequestMessageRoleEnum;
+    chatPending:               boolean;
+    splitSentencesPending:     boolean;
+    intentDetectionPending:    boolean;
+    lastSeenChatId:            string;
+    lastSeenIntentDetectionId: string;
 }
 
 export type ConversationPurposeType = 'create' | 'adventure';
@@ -172,13 +174,16 @@ export async function getMessages(conversationId: string) {
 
 export async function startAssistantPrompt(mongoClient: MongoClient, conversationId: string, intentDetection: boolean, relevantInfo: RelevantInformation) {
     const conversations = getConversationCollection(mongoClient);
+    const lastId = await getLastCompletionId();
     const responseMessage : Message = {
-        role:                   'assistant',
-        content:                '',
-        id:                     uuid(),
-        chatPending:            true,
-        intentDetectionPending: intentDetection,
-        lastSeenMessageId:      await getLastCompletionId()
+        role:                      'assistant',
+        content:                   '',
+        id:                        uuid(),
+        chatPending:               true,
+        splitSentencesPending:     true,
+        intentDetectionPending:    intentDetection,
+        lastSeenChatId:            lastId,
+        lastSeenIntentDetectionId: lastId
     };
 
     const conversation = await conversations.findOne({ _id: conversationId });

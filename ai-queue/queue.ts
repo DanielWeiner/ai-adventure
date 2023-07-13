@@ -23,8 +23,8 @@ interface ChatCompletionResponseQueueMessage {
     content:        string;
 };
 
-const STREAM_BATCH_SIZE = 10;
-const STREAM_BLOCK_TIME = 2000;
+const STREAM_BATCH_SIZE = 50;
+const STREAM_BLOCK_TIME = 1000;
 
 export const REDIS_REQUEST_QUEUE = 'AiqRequests';
 export const REDIS_REQUEST_CONSUMER_GROUP = 'RequestConsumerGroup';
@@ -57,6 +57,13 @@ export async function getLastCompletionId() {
     return entries[0]?.id || '0';
 }
 
+interface WatchStreamItem { 
+    message: string; 
+    timeout: boolean; 
+    done: boolean; 
+    id: string | null; 
+}
+
 export async function* watchStream({
     redisClient, 
     key, 
@@ -65,15 +72,17 @@ export async function* watchStream({
     lastSeenMessageId,
     mutuallyExclusiveConsumerGroup,
     timeout,
+    until
 } : {
-    redisClient: RedisClientType, 
-    key: string, 
-    consumerGroupId: string,
-    messageGroupId: string,
-    lastSeenMessageId: string | null,
-    mutuallyExclusiveConsumerGroup: boolean,
-    timeout?: number,
-}) : AsyncGenerator<{ message: string, timeout: boolean, done: boolean, id: string | null }> {
+    redisClient: RedisClientType;
+    key: string;
+    consumerGroupId: string;
+    messageGroupId: string;
+    lastSeenMessageId: string | null;
+    mutuallyExclusiveConsumerGroup: boolean;
+    timeout?: number;
+    until?: (item: WatchStreamItem) => boolean;
+}) : AsyncGenerator<WatchStreamItem> {
     const now = Number(new Date());
     await ensureStreamExists(redisClient, key);
     const groupInfo = await redisClient.xInfoGroups(key);
@@ -84,8 +93,20 @@ export async function* watchStream({
         return;
     }
 
+    mainLoop:
     while (true) {
         try {
+            if (timeout !== undefined && Number(new Date()) > now + timeout) {
+                yield {
+                    done:    false,
+                    message: 'null',
+                    timeout: true,
+                    id:      null
+                };
+
+                break;
+            }
+
             const response = await redisClient.xReadGroup(commandOptions({ isolated: true }), consumerGroupId, consumerGroupId, [
                 {
                     key,
@@ -95,16 +116,6 @@ export async function* watchStream({
                 COUNT: STREAM_BATCH_SIZE,
                 BLOCK: STREAM_BLOCK_TIME
             });
-
-            if (timeout !== undefined && Number(new Date()) > now + timeout) {
-                yield {
-                    done: true,
-                    message: 'null',
-                    timeout: true,
-                    id: null
-                };
-                break;
-            }
 
             if (!response?.[0]?.messages?.length) {
                 continue;
@@ -117,44 +128,40 @@ export async function* watchStream({
                 logger.info(`received ${JSON.stringify(message)} from ${key}.`);
             }
 
-            const messageIds = messages.map(({ id }) => id);
-            await redisClient.xAck(key, consumerGroupId, messageIds);
-
-            let done = false;
             for (const { id, message } of messages) {
-                done = message.done === 'true';
-
-                if (id !== messages[messages.length - 1].id) {
+                if (timeout !== undefined && Number(new Date()) > now + timeout) {
                     yield {
-                        done,
-                        message: message.content,
-                        id,
-                        timeout: false
-                    }
-                } else {
-                    if (timeout !== undefined && Number(new Date()) > now + timeout) {
-                        yield {
-                            done,
-                            message: message.content,
-                            id,
-                            timeout: true
-                        }
-
-                        return;
-                    }
-
-                    yield {
-                        done,
-                        message: message.content,
-                        id,
-                        timeout: false
+                        done:    false,
+                        message: 'null',
+                        timeout: true,
+                        id:      null
                     };
+
+                    break mainLoop;
+                }
+
+                const item: WatchStreamItem = {
+                    done: message.done === 'true',
+                    message: message.content,
+                    id,
+                    timeout: false
+                };
+                
+                yield item;
+
+                await redisClient.xAck(key, consumerGroupId, id);
+
+                if (until?.(item)) {
+                    break mainLoop;
                 }
             }
         } catch(e: any) {
+            logger.error(e);
             break;
         }
     }
+
+    await redisClient.xGroupDestroy(REDIS_COMPLETION_QUEUE, consumerGroupId);
 }
 
 export async function sendMessage(redisClient: RedisClientType, key: string, content: string, messageGroupId: string, done: boolean) {
@@ -218,14 +225,37 @@ async function startRequestReceiver(requestReaderClient: RedisClientType, comple
 
 export const createRedisClient = async () => {
     const client : RedisClientType = createClient({
-        url: REDIS_URL
-    })
+        url: REDIS_URL,
+        pingInterval: 1500,
+        socket: {
+            reconnectStrategy: 10,
+        }
+    });
     await client.connect();
 
     return client;
 };
 
-export async function* watchCompletionStream(consumerGroupId: string, messageGroupId: string, lastSeenMessageId: string | null, timeout?: number) {
+interface CompletionStreamItem {
+    message: ChatCompletionResponseQueueMessage | null;
+    done:    boolean;
+    timeout: boolean;
+    id:      string | null;
+}
+
+export async function* watchCompletionStream({
+    consumerGroupId,
+    messageGroupId,
+    lastSeenMessageId,
+    timeout,
+    until = () => false
+} : {
+    consumerGroupId:   string;
+    messageGroupId:    string;
+    lastSeenMessageId: string | null; 
+    timeout?: number;
+    until?: (item: CompletionStreamItem) => boolean
+}) : AsyncGenerator<CompletionStreamItem> {
     const redisClient = await createRedisClient();
 
     for await (const { message, done, timeout: timeoutReached, id } of watchStream({
@@ -235,9 +265,11 @@ export async function* watchCompletionStream(consumerGroupId: string, messageGro
         messageGroupId,
         lastSeenMessageId,
         mutuallyExclusiveConsumerGroup: true,
-        timeout
+        timeout,
+        until: ({ done, id, message, timeout }) => until({ done, id, timeout, message: JSON.parse(message) })
     })) {
         const response : ChatCompletionResponseQueueMessage | null = JSON.parse(message);
+        
         yield {
             message: response,
             done,

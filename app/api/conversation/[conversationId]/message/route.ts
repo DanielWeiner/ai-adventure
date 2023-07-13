@@ -22,12 +22,14 @@ class Route {
         }
 
         const newMessage : Message = {        
-            role:                   'user',
-            content:                message,
-            id:                     uuid(),
-            chatPending:            false,
-            intentDetectionPending: false,
-            lastSeenMessageId:      ''
+            role:                      'user',
+            content:                   message,
+            id:                        uuid(),
+            chatPending:               false,
+            splitSentencesPending:     false,
+            intentDetectionPending:    false,
+            lastSeenChatId:            '',
+            lastSeenIntentDetectionId: '',
         };
 
         await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });

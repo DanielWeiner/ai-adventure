@@ -6,7 +6,7 @@ import { findRelevantInformation, getConversationCollection, processIntentDetect
 import { v4 as uuid } from 'uuid';
 import { MongoClient } from "mongodb";
 
-import { getLastCompletionId, watchCompletionStream } from "@/ai-queue/queue";
+import { watchCompletionStream } from "@/ai-queue/queue";
 import { processChatIntents } from "@/app/lib/intent/processor";
 
 const defaultHeaders = {
@@ -77,11 +77,10 @@ class Route {
         const conversations = getConversationCollection(mongoClient);
         const conversation = await conversations.findOne({ '_id': conversationId, userId: session.user.id });
     
-        if (!conversation || conversation.locked) {
+        if (!conversation) {
             return NextResponse.json('Bad Request', { status: 400 });
         }
 
-        await conversations.updateOne({ _id: conversationId }, { $set: { locked: true } });
         const { messages, purpose } = conversation;
 
         const emitter = new SSEEmitter<Uint8Array>();
@@ -98,35 +97,84 @@ class Route {
                 (async () => {
                     if (!responseMessage.chatPending) return;
 
-                    for await (const streamItem of watchCompletionStream(uuid(), conversationId, responseMessage.lastSeenMessageId, API_TIMEOUT)) {
-                        if (streamItem.timeout) break;
+                    for await (const streamItem of watchCompletionStream({
+                        consumerGroupId:   uuid(),
+                        messageGroupId:    conversationId,
+                        lastSeenMessageId: responseMessage.lastSeenChatId,
+                        timeout:           API_TIMEOUT,
+                        until:             streamItem => streamItem.message?.label === 'chat' && streamItem.done
+                    })) {
                         if (!streamItem.message) continue;
 
                         if (streamItem.message.label === 'chat') {
                             emitter.push(encodeEvent(JSON.stringify({ delta: true, messageId: responseMessage.id, message: streamItem.message.content })));
-                            if (streamItem.done) {
-                                break;
-                            }
                         }
                     }
                 })(),
                 (async () => {
-                    let messageContent = responseMessage.content;
-                    let chatPending = responseMessage.chatPending;
-                    let intentDetectionPending = responseMessage.intentDetectionPending;
+                    if (!responseMessage.splitSentencesPending) return;
+                    
+                    let splitSentencesDone = false;
 
-                    for await (const streamItem of watchCompletionStream(`${responseMessage.id}-chats`, conversationId, responseMessage.lastSeenMessageId, API_TIMEOUT)) {
-                        if (streamItem.timeout) break;
-                        if (!streamItem.message) continue;
-                        const events : { name: string; description: string }[] = [];
+                    for await (const streamItem of watchCompletionStream({
+                        consumerGroupId:   `${responseMessage.id}-splitSentences`,
+                        messageGroupId:    conversationId,
+                        lastSeenMessageId: responseMessage.lastSeenIntentDetectionId,
+                        timeout:           API_TIMEOUT,
+                        until:             () => splitSentencesDone
+                    })) {
+                        if (!streamItem.message || !streamItem.id) continue;
 
-                        if (streamItem.message.label === 'chat') {
-                            messageContent += streamItem.message.content;
-                            chatPending = !streamItem.done;
-                        } else if (streamItem.message.label === 'splitSentences') {
+                        if (streamItem.message.label === 'splitSentences') {
+                            splitSentencesDone = true;
                             startIntentDetection(conversationId, messages, streamItem.message.content, relevantInfo);
-                        } else if (streamItem.message.label === 'intentDetection') {
+
+                            await conversations.updateOne({ 
+                                _id: conversationId, 
+                                messages: {
+                                    $elemMatch: { 
+                                        id: responseMessage.id,
+                                    } 
+                                } 
+                            }, {
+                                $set: {
+                                    'messages.$.splitSentencesPending':     false,
+                                    'messages.$.lastSeenIntentDetectionId': streamItem.id
+                                }
+                            });
+                        }
+                    }
+                })(),
+                (async () => {
+                    if (!responseMessage.intentDetectionPending) return;
+                    let intentDetectionPending = true;
+
+                    const events : { name: string; description: string }[] = [];
+
+                    for await (const streamItem of watchCompletionStream({
+                        consumerGroupId:   `${responseMessage.id}-intentDetection`,
+                        messageGroupId:    conversationId,
+                        lastSeenMessageId: responseMessage.lastSeenIntentDetectionId,
+                        timeout:           API_TIMEOUT,
+                        until:             () => !intentDetectionPending
+                    })) {
+                        if (!streamItem.message || !streamItem.id) continue;
+                        if (streamItem.message.label === 'intentDetection') {                            
                             intentDetectionPending = false;
+
+                            await conversations.updateOne({ 
+                                _id: conversationId, 
+                                messages: {
+                                    $elemMatch: { 
+                                        id: responseMessage.id,
+                                    } 
+                                } 
+                            }, {
+                                $set: {
+                                    'messages.$.intentDetectionPending':    intentDetectionPending,
+                                    'messages.$.lastSeenIntentDetectionId': streamItem.id
+                                }
+                            });
 
                             for await (const intent of processIntentDetectionResults(JSON.parse(streamItem.message.content))) {
                                 events.push(...await processChatIntents(mongoClient, conversationId, intent));
@@ -147,24 +195,28 @@ class Route {
                             }
 
                             emitter.push(encodeEvent(JSON.stringify({ events })));
-
-                            await conversations.updateOne({ 
-                                _id: conversationId, 
-                                messages: {
-                                    $elemMatch: { 
-                                        id: responseMessage.id,
-                                    } 
-                                } 
-                            }, {
-                                $set: {
-                                    'messages.$.intentDetectionPending': false,
-                                    'messages.$.lastSeenMessageId':      await getLastCompletionId()
-                                }
-                            });
                         }
+                    }
+                })(),
+                (async () => {
+                    let messageContent = responseMessage.content;
+                    let chatPending = responseMessage.chatPending;
+                    if (!chatPending) return;
+                    let lastChatId = responseMessage.lastSeenChatId;
 
-                        if (!(chatPending || intentDetectionPending)) {
-                            break;
+                    for await (const streamItem of watchCompletionStream({
+                        consumerGroupId:   `${responseMessage.id}-chats`,
+                        messageGroupId:    conversationId,
+                        lastSeenMessageId: responseMessage.lastSeenChatId,
+                        timeout: API_TIMEOUT,
+                        until: () => !chatPending
+                    })) {
+                        if (!streamItem.message || !streamItem.id) continue;
+
+                        if (streamItem.message.label === 'chat') {
+                            messageContent += streamItem.message.content;
+                            chatPending = !streamItem.done;
+                            lastChatId = streamItem.id;
                         }
                     }
 
@@ -177,9 +229,9 @@ class Route {
                         } 
                     }, {
                         $set: {
-                            'messages.$.content':                messageContent,
-                            'messages.$.chatPending':            chatPending,
-                            'messages.$.lastSeenMessageId':      await getLastCompletionId()
+                            'messages.$.content':        messageContent,
+                            'messages.$.chatPending':    chatPending,
+                            'messages.$.lastSeenChatId': lastChatId
                         }
                     });
                 })(),
@@ -194,20 +246,20 @@ class Route {
                 console.error(e);
                 emitter.push(encodeEvent(JSON.stringify({ done: true, error: e.toString() })));
             }).finally(async () => {
-                await conversations.updateOne({ _id: conversationId }, { $set: { locked: false } });
                 await mongoClient.close();
             });
         });
 
         const outStream = Readable.toWeb(Readable.from(emitter)) as ReadableStream<any>;
-
-        mongoKeepOpen();
-
-        return new NextResponse(outStream, {
+        const response = new NextResponse(outStream, {
             headers: {
                 ...defaultHeaders
             }
         });
+        
+        mongoKeepOpen();
+
+        return response;
     }
 }
 
