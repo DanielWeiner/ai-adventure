@@ -180,7 +180,7 @@ export async function startAssistantPrompt(mongoClient: MongoClient, conversatio
         content:                   '',
         id:                        uuid(),
         chatPending:               true,
-        splitSentencesPending:     true,
+        splitSentencesPending:     intentDetection,
         intentDetectionPending:    intentDetection,
         lastSeenChatId:            lastId,
         lastSeenIntentDetectionId: lastId
