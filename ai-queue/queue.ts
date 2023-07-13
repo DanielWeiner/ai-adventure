@@ -74,14 +74,14 @@ export async function* watchStream({
     timeout,
     until
 } : {
-    redisClient: RedisClientType;
-    key: string;
-    consumerGroupId: string;
-    messageGroupId: string;
-    lastSeenMessageId: string | null;
+    redisClient:                    RedisClientType;
+    key:                            string;
+    consumerGroupId:                string;
+    messageGroupId:                 string;
+    lastSeenMessageId:              string | null;
     mutuallyExclusiveConsumerGroup: boolean;
-    timeout?: number;
-    until?: (item: WatchStreamItem) => boolean;
+    timeout?:                       number;
+    until?:                         (item: WatchStreamItem) => boolean;
 }) : AsyncGenerator<WatchStreamItem> {
     const now = Number(new Date());
     await ensureStreamExists(redisClient, key);
@@ -161,7 +161,7 @@ export async function* watchStream({
         }
     }
 
-    await redisClient.xGroupDestroy(REDIS_COMPLETION_QUEUE, consumerGroupId);
+    await redisClient.xGroupDestroy(key, consumerGroupId);
 }
 
 export async function sendMessage(redisClient: RedisClientType, key: string, content: string, messageGroupId: string, done: boolean) {
