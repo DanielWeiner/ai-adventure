@@ -58,7 +58,6 @@ export default function ChatBox({ conversationId } : {
         if (!messagesFetched || fetchStatus === 'fetching') return;
         if (!pendingChat) return;
         if (!eventSource) {
-            console.log('setting event source');
             setEventSource(new EventSource(`/api/conversation/${conversationId}/chat`));
         }
     }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus ]);
@@ -76,7 +75,6 @@ export default function ChatBox({ conversationId } : {
                     eventSource.close();
                     return null;
                 });
-                console.log('invalidating');
                 queryClient.invalidateQueries([ queryKey ]);
             };
             
