@@ -23,8 +23,8 @@ interface ChatCompletionResponseQueueMessage {
     content:        string;
 };
 
-const STREAM_BATCH_SIZE = 50;
-const STREAM_BLOCK_TIME = 1000;
+const STREAM_BATCH_SIZE = 100;
+const STREAM_BLOCK_TIME = 5000;
 
 export const REDIS_REQUEST_QUEUE = 'AiqRequests';
 export const REDIS_REQUEST_CONSUMER_GROUP = 'RequestConsumerGroup';
