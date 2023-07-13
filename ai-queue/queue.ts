@@ -53,8 +53,8 @@ async function ensureStreamExists(redisClient: RedisClientType, key: string) {
 export async function getLastCompletionId() {
     const redisClient = await createRedisClient();
     await ensureStreamExists(redisClient, REDIS_COMPLETION_QUEUE);
-    const [{ id }] = await redisClient.xRevRange(REDIS_COMPLETION_QUEUE, '+', '-', { COUNT: 1 });
-    return id;
+    const entries = await redisClient.xRevRange(REDIS_COMPLETION_QUEUE, '+', '-', { COUNT: 1 });
+    return entries[0]?.id || '0';
 }
 
 export async function* watchStream({
