@@ -32,13 +32,12 @@ on:
 
 env:
   AWS_REGION: us-east-1 
+  ECR_REGISTRY_ALIAS: b8d5e4z4
   ECR_REPOSITORY: ai-adventure-queue
-  ECS_SERVICE: ai-adventure-ai-queue          # set this to your Amazon ECS service name
-  ECS_CLUSTER: ai-adventure                   # set this to your Amazon ECS cluster name
-  ECS_TASK_DEFINITION: task-definition.json   # set this to the path to your Amazon ECS task definition
-                                              # file, e.g. .aws/task-definition.json
-  CONTAINER_NAME: ai-adventure-queue           # set this to the name of the container in the
-                                              # containerDefinitions section of your task definition
+  ECS_SERVICE: ai-adventure-ai-queue
+  ECS_CLUSTER: ai-adventure
+  ECS_TASK_DEFINITION: task-definition.json
+  CONTAINER_NAME: ai-adventure-queue
 
 permissions:
   contents: read
@@ -63,6 +62,8 @@ jobs:
     - name: Login to Amazon ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
+      with:
+          registry-type: public
 
     - name: Build, tag, and push image to Amazon ECR
       id: build-image
@@ -73,8 +74,8 @@ jobs:
         # Build a docker container and
         # push it to ECR so that it can
         # be deployed to ECS.
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f ai-queue/Dockerfile .
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker build -t $ECR_REGISTRY/$ECR_REGISTRY_ALIAS/$ECR_REPOSITORY:$IMAGE_TAG -f ai-queue/Dockerfile .
+        docker push $ECR_REGISTRY/$ECR_REGISTRY_ALIAS/$ECR_REPOSITORY:$IMAGE_TAG
         aws ecs describe-task-definition\
             --task-definition ai-adventure-queue\
             --query taskDefinition > task-definition.json
