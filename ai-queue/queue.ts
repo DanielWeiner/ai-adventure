@@ -25,6 +25,7 @@ interface ChatCompletionResponseQueueMessage {
 
 const STREAM_BATCH_SIZE = 100;
 const STREAM_BLOCK_TIME = 5000;
+const MAX_RETRIES = 5;
 
 export const REDIS_REQUEST_QUEUE = 'AiqRequests';
 export const REDIS_REQUEST_CONSUMER_GROUP = 'RequestConsumerGroup';
@@ -93,6 +94,9 @@ export async function* watchStream({
         return;
     }
 
+    let retries = 0;
+    let prevId = lastSeenMessageId || '0';
+
     mainLoop:
     while (true) {
         try {
@@ -124,12 +128,11 @@ export async function* watchStream({
             const messages = response[0].messages.filter(({ message }) => message.messageGroupId === messageGroupId);
             if (!messages.length) continue;
 
-            for (const message of messages) {
-                logger.info(`received ${JSON.stringify(message)} from ${key}.`);
-            }
-
             for (const { id, message } of messages) {
+                logger.info(`received ${JSON.stringify(message)} from ${key}.`);
                 if (timeout !== undefined && Number(new Date()) > now + timeout) {
+                    await redisClient.xGroupSetId(key, consumerGroupId, prevId);
+                    
                     yield {
                         done:    false,
                         message: 'null',
@@ -146,12 +149,27 @@ export async function* watchStream({
                     id,
                     timeout: false
                 };
-                
-                yield item;
+                         
+                try {
+                    yield item;
 
-                await redisClient.xAck(key, consumerGroupId, id);
+                    await redisClient.xAck(key, consumerGroupId, id);
+                    retries = 0;
+                    prevId = id;
+                    logger.info(`${consumerGroupId} acknowledged ${JSON.stringify(message)} from ${key}.`);
+                } catch (e: any) {
+                    logger.error(`Error occured while processing ${id}: ${e}`);
+                    retries++;
+                    await redisClient.xGroupSetId(key, consumerGroupId, prevId);
+                    if (retries > MAX_RETRIES) {
+                        throw e;
+                    }
+
+                    continue mainLoop;
+                } 
 
                 if (until?.(item)) {
+                    await redisClient.xGroupSetId(key, consumerGroupId, id);
                     break mainLoop;
                 }
             }
@@ -162,6 +180,7 @@ export async function* watchStream({
     }
 
     await redisClient.xGroupDestroy(key, consumerGroupId);
+    logger.info(`Destroyed ${consumerGroupId} from ${key}`);
 }
 
 export async function sendMessage(redisClient: RedisClientType, key: string, content: string, messageGroupId: string, done: boolean) {
@@ -182,10 +201,6 @@ async function processCompletionRequest(openai: OpenAIApi, redisClient: RedisCli
                 content
             }), completionRequest.messageGroupId, done);
         }
-        await sendMessage(redisClient, REDIS_COMPLETION_QUEUE, JSON.stringify({
-            label: completionRequest.label,
-            content: ''
-        }), completionRequest.messageGroupId, true);
     } else if (completionRequest.kind === 'function') {
         const message = await completer.createFunctionCallCompletion(completionRequest.messages, completionRequest.functionName);
         await sendMessage(redisClient, REDIS_COMPLETION_QUEUE, JSON.stringify({
