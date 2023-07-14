@@ -205,7 +205,7 @@ export async function* watchStream({
         }
     }
 
-    await finalize?.();
+    await finalize();
 
     process.off('SIGTERM', onTerminate);
 }
