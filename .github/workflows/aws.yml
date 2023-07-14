@@ -32,7 +32,7 @@ on:
 
 env:
   AWS_REGION: us-east-1 
-  ECR_REPOSITORY: public.ecr.aws/b8d5e4z4/ai-adventure-queue
+  ECR_REPOSITORY: ai-adventure-queue
   ECS_SERVICE: ai-adventure-ai-queue          # set this to your Amazon ECS service name
   ECS_CLUSTER: ai-adventure                   # set this to your Amazon ECS cluster name
   ECS_TASK_DEFINITION: task-definition.json   # set this to the path to your Amazon ECS task definition
