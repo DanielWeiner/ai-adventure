@@ -69,6 +69,7 @@ export async function* watchStream({
     redisClient, 
     key, 
     consumerGroupId,
+    consumerId = consumerGroupId,
     messageGroupId,
     lastSeenMessageId,
     mutuallyExclusiveConsumerGroup,
@@ -78,6 +79,7 @@ export async function* watchStream({
     redisClient:                    RedisClientType;
     key:                            string;
     consumerGroupId:                string;
+    consumerId?:                    string;
     messageGroupId:                 string;
     lastSeenMessageId:              string | null;
     mutuallyExclusiveConsumerGroup: boolean;
@@ -97,6 +99,30 @@ export async function* watchStream({
     let retries = 0;
     let prevId = lastSeenMessageId || '0';
 
+    const finalize = async () => {
+        await redisClient.xGroupSetId(key, consumerGroupId, prevId);
+        const shouldDestroyGroup = await redisClient.xInfoConsumers(key, consumerGroupId).then(consumers => {
+            if (consumers.length === 0) return true;
+            if (consumers.length === 1 && consumers[0].name === consumerId) return true;
+            return false;
+        });
+    
+        if (shouldDestroyGroup) {
+            await redisClient.xGroupDestroy(key, consumerGroupId);
+            logger.info(`destroyed group ${consumerGroupId} from ${key}`);
+        } else {
+            await redisClient.xGroupDelConsumer(key, consumerGroupId, consumerId);
+            logger.info(`destroyed consumer ${consumerId} from group ${consumerId} at ${key}`);
+        }
+    };
+
+    const onTerminate = async () => {
+        logger.info(`terminated queue watcher, group: ${consumerGroupId}, consumer: ${consumerId}`);
+        await finalize();
+    };
+
+    process.once('SIGTERM', onTerminate);
+
     mainLoop:
     while (true) {
         try {
@@ -111,7 +137,7 @@ export async function* watchStream({
                 break;
             }
 
-            const response = await redisClient.xReadGroup(commandOptions({ isolated: true }), consumerGroupId, consumerGroupId, [
+            const response = await redisClient.xReadGroup(commandOptions({ isolated: true }), consumerGroupId, consumerId, [
                 {
                     key,
                     id: '>',
@@ -132,7 +158,7 @@ export async function* watchStream({
                 logger.info(`received ${JSON.stringify(message)} from ${key}.`);
                 if (timeout !== undefined && Number(new Date()) > now + timeout) {
                     await redisClient.xGroupSetId(key, consumerGroupId, prevId);
-                    
+
                     yield {
                         done:    false,
                         message: 'null',
@@ -154,8 +180,8 @@ export async function* watchStream({
                     yield item;
 
                     await redisClient.xAck(key, consumerGroupId, id);
-                    retries = 0;
                     prevId = id;
+                    retries = 0;
                     logger.info(`${consumerGroupId} acknowledged ${JSON.stringify(message)} from ${key}.`);
                 } catch (e: any) {
                     logger.error(`Error occured while processing ${id}: ${e}`);
@@ -179,8 +205,9 @@ export async function* watchStream({
         }
     }
 
-    await redisClient.xGroupDestroy(key, consumerGroupId);
-    logger.info(`Destroyed ${consumerGroupId} from ${key}`);
+    await finalize?.();
+
+    process.off('SIGTERM', onTerminate);
 }
 
 export async function sendMessage(redisClient: RedisClientType, key: string, content: string, messageGroupId: string, done: boolean) {
@@ -220,11 +247,12 @@ async function startRequestReceiver(requestReaderClient: RedisClientType, comple
     logger.info(`AI queue processor listening to ${REDIS_REQUEST_QUEUE}.`);
 
     for await (const { message } of watchStream({
-        redisClient: requestReaderClient,
-        consumerGroupId: REDIS_REQUEST_CONSUMER_GROUP,
-        key: REDIS_REQUEST_QUEUE,
-        messageGroupId: REDIS_REQUEST_CONSUMER_GROUP,
-        lastSeenMessageId: null,
+        redisClient:                    requestReaderClient,
+        consumerGroupId:                REDIS_REQUEST_CONSUMER_GROUP,
+        consumerId:                     uuid(),
+        key:                            REDIS_REQUEST_QUEUE,
+        messageGroupId:                 REDIS_REQUEST_CONSUMER_GROUP,
+        lastSeenMessageId:              null,
         mutuallyExclusiveConsumerGroup: false
     })) {
         try {
