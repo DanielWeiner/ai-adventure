@@ -18,8 +18,8 @@ services:
       - ./data/redis:/data
   ai-queue-server:
     build: 
-      context: "."
-      dockerfile: ai-queue/Dockerfile
+      context: ai-queue
+      dockerfile: Dockerfile
     env_file:
       - .env
     ports:
@@ -31,4 +31,3 @@ services:
     environment:
       - REDIS_URL=redis://ai-queue:6379
       - AI_QUEUE_LOG=1
-    command: npm run start:ai-queue

@@ -1,4 +1,4 @@
-import { requiredObject, property, string, enumVals, object } from "../jsonSchema";
+import { requiredObject, property, string, enumVals, object } from "../../../ai-queue/jsonSchema";
 
 export interface SetNameIntent {
     quote: string;

@@ -20,7 +20,7 @@ module.exports = {
     },
     output: {
         filename: 'server.js',
-        path: path.resolve(__dirname, '..', '.ai-queue')
+        path: path.resolve(__dirname, '.ai-queue')
     },
     name: 'ai-queue',
     

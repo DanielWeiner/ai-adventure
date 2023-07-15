@@ -5,7 +5,7 @@ import { apiUrl } from "./api";
 import { cookies } from "next/headers";
 import { NounType, getConversationNoun } from "./noun";
 import { getLastCompletionId, sendCompletionRequest } from "@/ai-queue/queue";
-import { systemPrompt, assistantPrompt, userPrompt } from "../lib/chatPrompt";
+import { assistantPrompt, userPrompt } from "../../ai-queue/chatPrompt";
 import { v4 as uuid } from 'uuid';
 import { Intent } from "../lib/intent";
 import { generateIntentsSchema } from "../lib/intent/schema";

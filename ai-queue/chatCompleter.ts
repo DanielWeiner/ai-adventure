@@ -10,7 +10,7 @@ import {
     CreateChatCompletionResponseChoicesInner, 
     OpenAIApi 
 } from "openai";
-import { systemPrompt } from "../app/lib/chatPrompt";
+import { systemPrompt } from "./chatPrompt";
 const { OPENAI_API_KEY } = process.env;
 
 interface ChatCompletionStreamResponseDelta {

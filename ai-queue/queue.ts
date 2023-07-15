@@ -33,6 +33,7 @@ export const REDIS_COMPLETION_QUEUE = 'AiqCompletions';
 
 const configuration = new Configuration({ apiKey: process.env.OPENAI_API_KEY });
 const openai = new OpenAIApi(configuration);
+
 export const logger = createLogger({
     transports: [
         new transports.Console({
@@ -166,6 +167,7 @@ export async function* watchStream({
                         id:      null
                     };
 
+                    await redisClient.xGroupSetId(key, consumerGroupId, prevId);
                     break mainLoop;
                 }
 

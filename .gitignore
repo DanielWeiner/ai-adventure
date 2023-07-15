@@ -2,6 +2,8 @@
 
 # dependencies
 /node_modules
+ai-queue/node_modules
+ai-queue/.ai-queue/
 /.pnp
 .pnp.js
 
@@ -11,7 +13,6 @@
 # next.js
 /.next/
 /out/
-/.ai-queue/
 
 # production
 /build

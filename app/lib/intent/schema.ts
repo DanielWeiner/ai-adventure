@@ -1,6 +1,6 @@
 import { ChatCompletionFunctions } from "openai";
 import { intent } from ".";
-import { property, string, array, items, requiredObject, number, anyOf, option, describe } from "../jsonSchema";
+import { property, string, array, items, requiredObject, number, anyOf, option, describe } from "../../../ai-queue/jsonSchema";
 
 const setName = (context: string) => intent('setName')(
     property('name')(
