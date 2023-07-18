@@ -28,6 +28,7 @@ services:
       - ai-queue
     depends_on:
       - ai-queue
+    restart: always
     environment:
       - REDIS_URL=redis://ai-queue:6379
       - AI_QUEUE_LOG=1

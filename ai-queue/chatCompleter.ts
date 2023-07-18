@@ -10,7 +10,7 @@ import {
     CreateChatCompletionResponseChoicesInner, 
     OpenAIApi 
 } from "openai";
-import { systemPrompt } from "./chatPrompt";
+import { Logger } from "winston";
 const { OPENAI_API_KEY } = process.env;
 
 interface ChatCompletionStreamResponseDelta {
@@ -34,11 +34,11 @@ export default class ChatCompleter {
         temperature: 0
     };
     #functions : ChatCompletionFunctions[] = [];
+    #logger : Logger;
 
-    constructor(openAi: OpenAIApi = new OpenAIApi(new Configuration({ 
-        apiKey: OPENAI_API_KEY 
-    }))) {
+    constructor(openAi: OpenAIApi, logger: Logger) {
         this.#openAi = openAi;
+        this.#logger = logger;
     }
 
     configure(config: Partial<Omit<CreateChatCompletionRequest, 'messages' | 'stream'>>) {
@@ -63,7 +63,7 @@ export default class ChatCompleter {
     }
 
     async createFunctionCallCompletion(messages: ChatCompletionRequestMessage[], functionName?: string) : Promise<any> {
-        const response = await this.#openAi.createChatCompletion({
+        const options = {
             ...this.#createCompletionConfig(messages),
             ...functionName ? {
                 function_call: {
@@ -71,22 +71,32 @@ export default class ChatCompleter {
                 }
             } : null,
             functions: this.#functions
-        });
-
-        return JSON.parse(response.data.choices[0].message?.function_call?.arguments || 'null');
+        };
+        this.#logger.info(`openai function call: ${JSON.stringify(options, null, 2)}`);
+        const response = await this.#openAi.createChatCompletion(options);
+        try {
+            return JSON.parse(response.data.choices[0].message?.function_call?.arguments || 'null');
+        } catch {
+            return null;
+        }
     }
 
     async createChatCompletion(messages: ChatCompletionRequestMessage[]) : Promise<string> {
-        const response = await this.#openAi.createChatCompletion(this.#createCompletionConfig(messages));
+        const options = this.#createCompletionConfig(messages);
+        this.#logger.info(`openai chat completion: ${JSON.stringify(options, null, 2)}`);
+        const response = await this.#openAi.createChatCompletion(options);
 
         return response.data.choices[0].message?.content || '';
     }
 
     async *generateChatCompletionDeltas(messages: ChatCompletionRequestMessage[]) : AsyncIterable<{content: string, done: boolean}> {
-        const { data: stream } = await this.#openAi.createChatCompletion({
+        const options = {
             ...this.#createCompletionConfig(messages),
             stream: true
-        }, { responseType: 'stream' }) as unknown as AxiosResponse<IncomingMessage>;
+        };
+
+        this.#logger.info(`openai streaming chat completion: ${JSON.stringify(options, null, 2)}`);
+        const { data: stream } = await this.#openAi.createChatCompletion(options, { responseType: 'stream' }) as unknown as AxiosResponse<IncomingMessage>;
 
         let cachedChunk = '';
         for await (const chunk of stream) {
@@ -116,7 +126,7 @@ export default class ChatCompleter {
         return {
             ...this.#config,
             messages: [
-                ...this.#systemMessage ? [systemPrompt`${this.#systemMessage}`] : [],
+                ...this.#systemMessage ? [{ role: 'system', content: `${this.#systemMessage}` } as const] : [],
                 ...messages
             ]
         };

@@ -2,12 +2,14 @@ import { authorize, Session } from "@/app/api/auth";
 import { mongo } from "@/app/mongo";
 import { NextRequest, NextResponse } from "next/server";
 import { Readable } from "stream";
-import { findRelevantInformation, getConversationCollection, processIntentDetectionResults, startIntentDetection } from "../../../conversation";
+import { getConversationCollection, processIntentDetectionResults } from "../../../conversation";
 import { v4 as uuid } from 'uuid';
 import { MongoClient } from "mongodb";
 
-import { watchCompletionStream } from "@/ai-queue/queue";
 import { processChatIntents } from "@/app/lib/intent/processor";
+import { Pipeline } from "@/ai-queue/pipeline/pipeline";
+import { PIPELINE_ITEM_EVENT_CONTENT, PIPELINE_ITEM_EVENT_END } from "@/ai-queue/pipeline/constants";
+import { Intent } from "@/app/lib/intent";
 
 const defaultHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -55,6 +57,10 @@ class SSEEmitter<T> implements AsyncIterable<T> {
 
     async process(cb: () => Promise<void>) {
         await cb();
+        this.finish();
+    }
+
+    finish() {
         this.#resolve({ done: true });
     }
     
@@ -73,62 +79,50 @@ class SSEEmitter<T> implements AsyncIterable<T> {
 class Route {
     @authorize
     @mongo
-    async GET(_: NextRequest, { params: { conversationId, session, mongoClient, mongoKeepOpen } } : { params: { session: Session, conversationId: string, userMessageId: string, mongoClient: MongoClient, mongoKeepOpen: () => {} } }) {
+    async GET(req: NextRequest, { params: { conversationId, session, mongoClient, mongoKeepOpen } } : { params: { session: Session, conversationId: string, userMessageId: string, mongoClient: MongoClient, mongoKeepOpen: () => {} } }) {
         const conversations = getConversationCollection(mongoClient);
         const conversation = await conversations.findOne({ '_id': conversationId, userId: session.user.id });
-    
+        const clientId = uuid();
+
         if (!conversation) {
             return NextResponse.json('Bad Request', { status: 400 });
         }
 
-        const { messages, purpose } = conversation;
+        const { messages } = conversation;
 
         const emitter = new SSEEmitter<Uint8Array>();
         const responseMessage = messages[messages.length - 1];
 
-        if (!(responseMessage.chatPending || responseMessage.intentDetectionPending)) {
-            return NextResponse.json('Bad Request', { status: 400 });
-        }
+        if (responseMessage.pending) {
+            const pipeline = await Pipeline.fromId(responseMessage.aiPipelineId);
+            if (!pipeline) {
+                return NextResponse.json('Internal server error', { status: 500 });
+            }
 
-        const relevantInfo = await findRelevantInformation(conversationId, purpose.type, purpose.context);
-
-        emitter.process(async () => {
-            await Promise.all([
-                (async () => {
-                    if (!responseMessage.chatPending) return;
-
-                    for await (const streamItem of watchCompletionStream({
-                        consumerGroupId:   uuid(),
-                        messageGroupId:    conversationId,
-                        lastSeenMessageId: responseMessage.lastSeenChatId,
-                        timeout:           API_TIMEOUT,
-                        until:             streamItem => streamItem.message?.label === 'chat' && streamItem.done
-                    })) {
-                        if (!streamItem.message) continue;
-
-                        if (streamItem.message.label === 'chat') {
-                            emitter.push(encodeEvent(JSON.stringify({ delta: true, messageId: responseMessage.id, message: streamItem.message.content })));
+            mongoKeepOpen();
+            emitter.process(async () => {
+                await Promise.all([
+                    (async () => {  
+                        const chatItem = pipeline.getItemByRequestAlias('chat');
+                      
+                        if (!chatItem) return;
+                        if (await chatItem.isDone()) {
+                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, message: await chatItem.getContent() })));
+                            return;
                         }
-                    }
-                })(),
-                (async () => {
-                    if (!responseMessage.splitSentencesPending) return;
-                    
-                    let splitSentencesDone = false;
-
-                    for await (const streamItem of watchCompletionStream({
-                        consumerGroupId:   `${responseMessage.id}-splitSentences`,
-                        messageGroupId:    conversationId,
-                        lastSeenMessageId: responseMessage.lastSeenIntentDetectionId,
-                        timeout:           API_TIMEOUT,
-                        until:             () => splitSentencesDone
-                    })) {
-                        if (!streamItem.message || !streamItem.id) continue;
-
-                        if (streamItem.message.label === 'splitSentences') {
-                            splitSentencesDone = true;
-                            startIntentDetection(conversationId, messages, streamItem.message.content, relevantInfo);
-
+    
+                        for await (const { content } of chatItem.watchStream({
+                            consumerGroupId: clientId, 
+                            consumerId:      clientId, 
+                            timeout:         API_TIMEOUT,
+                            events:          [PIPELINE_ITEM_EVENT_CONTENT]
+                        })) {
+                            emitter.push(encodeEvent(JSON.stringify({ delta: true, messageId: responseMessage.id, message: content })));
+                        }
+                    })(),
+                    (async () => {
+                        const chatItem = pipeline.getItemByRequestAlias('chat')!;
+                        const finalize = async () => {
                             await conversations.updateOne({ 
                                 _id: conversationId, 
                                 messages: {
@@ -138,117 +132,108 @@ class Route {
                                 } 
                             }, {
                                 $set: {
-                                    'messages.$.splitSentencesPending':     false,
-                                    'messages.$.lastSeenIntentDetectionId': streamItem.id
+                                    'messages.$.content': await chatItem.getContent()
                                 }
                             });
+    
+                            await chatItem.endOtherStreamWatchers();
+                        };
+
+                        if (await chatItem.isDone()) {
+                            await finalize();
+                            return;
                         }
-                    }
-                })(),
-                (async () => {
-                    if (!responseMessage.intentDetectionPending) return;
-                    let intentDetectionPending = true;
+    
+                        for await (const {} of chatItem.watchStream({
+                            consumerGroupId: 'chat', 
+                            consumerId:      clientId, 
+                            timeout:         API_TIMEOUT,
+                            events:          [PIPELINE_ITEM_EVENT_END]
+                        })) {
+                            await finalize();
+                        }
+                    })(),
+                    (async () => {
+                        const endItem = pipeline.getItem(pipeline.getEndId())!;
+                        const chatItem = pipeline.getItemByRequestAlias('chat')!;
 
-                    const events : { name: string; description: string }[] = [];
-
-                    for await (const streamItem of watchCompletionStream({
-                        consumerGroupId:   `${responseMessage.id}-intentDetection`,
-                        messageGroupId:    conversationId,
-                        lastSeenMessageId: responseMessage.lastSeenIntentDetectionId,
-                        timeout:           API_TIMEOUT,
-                        until:             () => !intentDetectionPending
-                    })) {
-                        if (!streamItem.message || !streamItem.id) continue;
-                        if (streamItem.message.label === 'intentDetection') {                            
-                            intentDetectionPending = false;
-
+                        const finalize = async () => {
+                            const chatContent = await chatItem.getContent();
                             await conversations.updateOne({ 
                                 _id: conversationId, 
                                 messages: {
                                     $elemMatch: { 
                                         id: responseMessage.id,
                                     } 
-                                } 
-                            }, {
+                                }  
+                            }, { 
                                 $set: {
-                                    'messages.$.intentDetectionPending':    intentDetectionPending,
-                                    'messages.$.lastSeenIntentDetectionId': streamItem.id
-                                }
+                                    'messages.$.content': chatContent,
+                                    'messages.$.pending': false
+                                } 
                             });
+                            
+                            await chatItem.endOtherStreamWatchers();
 
-                            for await (const intent of processIntentDetectionResults(JSON.parse(streamItem.message.content))) {
-                                events.push(...await processChatIntents(mongoClient, conversationId, intent));
-                            }
+                            const intentDetectionItem = pipeline.getItemByRequestAlias('intentDetection');
+                            if (intentDetectionItem) {
+                                await intentDetectionItem.endOtherStreamWatchers();
+                                const events : { name: string; description: string }[] = [];
+    
+                                let results : { intents: Intent[] };
+                                try {
+                                    results = JSON.parse(await intentDetectionItem.getContent());
+                                } catch {
+                                    results = { intents: [] };
+                                }
 
-                            if (events.length) {
-                                await conversations.updateOne({ _id: conversationId }, { 
-                                    $push: {
-                                        events: { 
-                                            $each: events.map(({ description }) => ({
-                                                after: messages[messages.length - 1].id,
-                                                description: `EVENT LOG: ${description}`,
-                                                id: uuid()
-                                            }))
+                                for await (const intent of processIntentDetectionResults(results)) {
+                                    events.push(...await processChatIntents(mongoClient, conversationId, intent));
+                                }
+    
+                                if (events.length) {
+                                    await conversations.updateOne({ _id: conversationId }, { 
+                                        $push: {
+                                            events: { 
+                                                $each: events.map(({ description }) => ({
+                                                    after: messages[messages.length - 1].id,
+                                                    description: `EVENT LOG: ${description}`,
+                                                    id: uuid()
+                                                }))
+                                            }
                                         }
-                                    }
-                                });
+                                    });
+                                    emitter.push(encodeEvent(JSON.stringify({ events })));
+                                }
                             }
 
-                            emitter.push(encodeEvent(JSON.stringify({ events })));
-                        }
-                    }
-                })(),
-                (async () => {
-                    let messageContent = responseMessage.content;
-                    let chatPending = responseMessage.chatPending;
-                    if (!chatPending) return;
-                    let lastChatId = responseMessage.lastSeenChatId;
+                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, message: chatContent })));
+                            emitter.push(encodeEvent(JSON.stringify({ done: true })));
+                            await endItem.endOtherStreamWatchers();
+                        };
 
-                    for await (const streamItem of watchCompletionStream({
-                        consumerGroupId:   `${responseMessage.id}-chats`,
-                        messageGroupId:    conversationId,
-                        lastSeenMessageId: responseMessage.lastSeenChatId,
-                        timeout: API_TIMEOUT,
-                        until: () => !chatPending
-                    })) {
-                        if (!streamItem.message || !streamItem.id) continue;
-
-                        if (streamItem.message.label === 'chat') {
-                            messageContent += streamItem.message.content;
-                            chatPending = !streamItem.done;
-                            lastChatId = streamItem.id;
+                        if (await endItem.isDone() && await chatItem.isDone()) {
+                            await finalize();
+                            return;
                         }
-                    }
-
-                    await conversations.updateOne({ 
-                        _id: conversationId, 
-                        messages: {
-                            $elemMatch: { 
-                                id: responseMessage.id,
-                            } 
-                        } 
-                    }, {
-                        $set: {
-                            'messages.$.content':        messageContent,
-                            'messages.$.chatPending':    chatPending,
-                            'messages.$.lastSeenChatId': lastChatId
+                        
+                        for await (const {} of endItem.watchStream({
+                            consumerGroupId: 'end', 
+                            consumerId:      clientId, 
+                            timeout:         API_TIMEOUT,
+                            events:          [PIPELINE_ITEM_EVENT_END]
+                        })) {
+                            await finalize();
                         }
-                    });
-                })(),
-            ]).then(async () => {
-                const conversation = await conversations.findOne({ _id: conversationId });
-                if (!conversation) return;
-                const lastMessage = conversation.messages[conversation.messages.length - 1];
-                if (!(lastMessage.chatPending || lastMessage.intentDetectionPending)) {
-                    emitter.push(encodeEvent(JSON.stringify({ done: true })));
-                }
-            }).catch(async e => {
-                console.error(e);
-                emitter.push(encodeEvent(JSON.stringify({ done: true, error: e.toString() })));
-            }).finally(async () => {
-                await mongoClient.close();
+                    })()
+                ]).finally(async () => {
+                    await mongoClient.close();
+                });
             });
-        });
+        } else {
+            emitter.push(encodeEvent(JSON.stringify({ done: true })));
+            emitter.finish();
+        }
 
         const outStream = Readable.toWeb(Readable.from(emitter)) as ReadableStream<any>;
         const response = new NextResponse(outStream, {
@@ -256,8 +241,6 @@ class Route {
                 ...defaultHeaders
             }
         });
-        
-        mongoKeepOpen();
 
         return response;
     }

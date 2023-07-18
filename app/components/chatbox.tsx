@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useCreationContext } from "../create/context";
 import { SendIcon } from "./icons";
+import { v4 as uuid } from 'uuid';
 
 const fetchJson = async <T,>(url: string, options?: RequestInit) : Promise<T> => (await fetch(`/api/${url}`, options)).json();
 const getMessages = (conversationId: string) => fetchJson<Message[]>(`/conversation/${conversationId}/message`);
@@ -27,8 +28,8 @@ export default function ChatBox({ conversationId } : {
     conversationId: string
 }) {
     const [ text, setText ] = useState("");
+
     const [ eventSource, setEventSource ] = useState<EventSource | null>(null);
-    
     const { sessionToken, messages: remoteChatLog, nounType, noun } = useCreationContext();
     
     const { data: messages, isFetched: messagesFetched, fetchStatus } = useQuery({
@@ -38,7 +39,7 @@ export default function ChatBox({ conversationId } : {
     });
 
     const lastMessage = messages[messages.length - 1];
-    const pendingChat = lastMessage.chatPending || lastMessage.intentDetectionPending;
+    const pendingChat = lastMessage.pending;
     const loadingBubble = pendingChat && !lastMessage.content;
 
     const queryClient = useQueryClient();
@@ -81,12 +82,12 @@ export default function ChatBox({ conversationId } : {
             try {
                 const data = JSON.parse(event.data);
 
-                if (data.delta && typeof data.messageId === 'string' && typeof data.message === 'string') {
+                if (typeof data.messageId === 'string' && typeof data.message === 'string') {
                     queryClient.setQueryData([queryKey], (messages: Message[] | undefined) => (messages || []).map(({ id, content, ...rest }) => (
                         id === data.messageId ? {
                             id,
                             ...rest,
-                            content: content + data.message
+                            content: data.delta ? content + data.message : data.message
                         } : { id, content, ...rest }
                     ))); 
                     return;
@@ -123,7 +124,7 @@ export default function ChatBox({ conversationId } : {
             <div className="rounded-sm flex-grow overflow-hidden flex flex-col items-stretch [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
                     <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3`}>
-                        {messages.filter(({ chatPending, intentDetectionPending }) => !((chatPending || intentDetectionPending) && loadingBubble)).map(({ content, role, id }) => <ChatBubble role={role} key={id}>{content}</ChatBubble>)}
+                        {messages.filter(({ pending }) => !(pending && loadingBubble)).map(({ content, role, id }) => <ChatBubble role={role} key={id}>{content}</ChatBubble>)}
                         {loadingBubble ? <ChatBubble role="assistant">
                             <div className="flex flex-row">
                                 <div className="py-2 mx-0.5 animate-bounce">

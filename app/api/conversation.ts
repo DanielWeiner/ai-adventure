@@ -1,24 +1,22 @@
 import { getMongoDatabase } from "@/app/mongo";
 import { Collection, MongoClient } from "mongodb";
-import { ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum, OpenAIApi } from "openai";
+import { ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum } from "openai";
 import { apiUrl } from "./api";
 import { cookies } from "next/headers";
 import { NounType, getConversationNoun } from "./noun";
-import { getLastCompletionId, sendCompletionRequest } from "@/ai-queue/queue";
-import { assistantPrompt, userPrompt } from "../../ai-queue/chatPrompt";
+import { assistantPrompt, prevResult, systemPrompt, userPrompt } from "../../ai-queue/pipeline/prompt";
 import { v4 as uuid } from 'uuid';
 import { Intent } from "../lib/intent";
 import { generateIntentsSchema } from "../lib/intent/schema";
+import { Pipeline } from "@/ai-queue/pipeline/pipeline";
+import { PipelineItemConfig } from "@/ai-queue/pipeline/config";
 
 export interface Message {
-    id:                        string;
-    content:                   string;
-    role:                      ChatCompletionRequestMessageRoleEnum;
-    chatPending:               boolean;
-    splitSentencesPending:     boolean;
-    intentDetectionPending:    boolean;
-    lastSeenChatId:            string;
-    lastSeenIntentDetectionId: string;
+    id:           string;
+    content:      string;
+    role:         ChatCompletionRequestMessageRoleEnum;
+    aiPipelineId: string;
+    pending:      boolean;
 }
 
 export type ConversationPurposeType = 'create' | 'adventure';
@@ -115,46 +113,47 @@ export function listRelevantInformation({ name, properties, traits } : RelevantI
     ].join('\n').trim();
 }
 
-export function startSentenceSplitting(messages: ChatCompletionRequestMessage[], relevantInfo: RelevantInformation, messageGroupId: string) {
+function createSentenceSplittingPrompt(messages: ChatCompletionRequestMessage[], relevantInfo: RelevantInformation) : PipelineItemConfig {
     const chatMessages = messages.filter(({ role }) => role !== 'system');
     const lastAssistantPrompt = chatMessages.slice(-2)[0].content!;
     const lastUserPrompt = chatMessages.slice(-1)[0].content!;
     const relevantInfoStr = listRelevantInformation(relevantInfo);
 
-    return sendCompletionRequest({
-        messageGroupId,
-        kind: 'message',
-        label: 'splitSentences',
-        systemMessage: `            
-            First, you will enter information mode. You will enumerate the current information about a ${relevantInfo.type}. Then you will enter chat mode. You will produce a worldbuilding prompt in chat mode. The user will respond to that in chat mode. Then you will exit chat mode and enter sentence breakdown mode.
+    return {
+        request: {
+            kind: 'message',
+            alias: 'splitSentences',
+            systemMessage: `            
+                First, you will enter information mode. You will enumerate the current information about a ${relevantInfo.type}. Then you will enter chat mode. You will produce a worldbuilding prompt in chat mode. The user will respond to that in chat mode. Then you will exit chat mode and enter sentence breakdown mode.
 
-            You will then follow these instructions:
-            
-            Output "FIRST STAGE".
-            - Summarize the user's response as short, simple sentences on individual lines.
-            - If the user provided no new information about the ${relevantInfo.type}, just output NONE.
-            - Each sentence must contain one piece of information.
-            - Compound information must be split into multiple sentences.
-            - References to the assistant prompt should be written as sentences containing that information.
-            - Ignore requests for suggestions.
-            - Sentences should only be about the ${relevantInfo.type} itself.
-            - Do not add novel information that hasn't been added by the user.
-            - Do not leave out any information mentioned by the user.
+                You will then follow these instructions:
+                
+                Output "FIRST STAGE".
+                - Summarize the user's response as short, simple sentences on individual lines.
+                - If the user provided no new information about the ${relevantInfo.type}, just output NONE.
+                - Each sentence must contain one piece of information.
+                - Compound information must be split into multiple sentences.
+                - References to the assistant prompt should be written as sentences containing that information.
+                - Ignore requests for suggestions.
+                - Sentences should only be about the ${relevantInfo.type} itself.
+                - Do not add novel information that hasn't been added by the user.
+                - Do not leave out any information mentioned by the user.
 
-            Then, output "${splitSentencePrefix}".
-            - Process each sentence from the FIRST STAGE further a second time to split them into even smaller pieces of information.
-            - Output those smaller sentences.
-            - Merge the sentences together to verify that they match the first stage.
-        `,
-        messages: [
-            assistantPrompt`Entering information mode. The following is the current ${relevantInfo.type} information.`,
-            assistantPrompt`${relevantInfoStr}`,
-            assistantPrompt`Exiting information mode. Entering chat mode.`, 
-            assistantPrompt`${lastAssistantPrompt}`,
-            userPrompt`${lastUserPrompt}`,
-            assistantPrompt`Exiting chat mode. Entering sentence breakdown mode.`
-        ]
-    });
+                Then, output "${splitSentencePrefix}".
+                - Process each sentence from the FIRST STAGE further a second time to split them into even smaller pieces of information.
+                - Output those smaller sentences.
+                - Merge the sentences together to verify that they match the first stage.
+            `,
+            messages: [
+                assistantPrompt`Entering information mode. The following is the current ${relevantInfo.type} information.`,
+                assistantPrompt`${relevantInfoStr}`,
+                assistantPrompt`Exiting information mode. Entering chat mode.`, 
+                assistantPrompt`${lastAssistantPrompt}`,
+                userPrompt`${lastUserPrompt}`,
+                assistantPrompt`Exiting chat mode. Entering sentence breakdown mode.`
+            ]
+        }
+    };
 }
 
 export function getConversationCollection(mongoClient: MongoClient) : Collection<Conversation> {
@@ -174,16 +173,12 @@ export async function getMessages(conversationId: string) {
 
 export async function startAssistantPrompt(mongoClient: MongoClient, conversationId: string, intentDetection: boolean, relevantInfo: RelevantInformation) {
     const conversations = getConversationCollection(mongoClient);
-    const lastId = await getLastCompletionId();
     const responseMessage : Message = {
-        role:                      'assistant',
-        content:                   '',
-        id:                        uuid(),
-        chatPending:               true,
-        splitSentencesPending:     intentDetection,
-        intentDetectionPending:    intentDetection,
-        lastSeenChatId:            lastId,
-        lastSeenIntentDetectionId: lastId
+        role:         'assistant',
+        content:      '',
+        id:           uuid(),
+        aiPipelineId: uuid(),
+        pending:      true
     };
 
     const conversation = await conversations.findOne({ _id: conversationId });
@@ -196,22 +191,59 @@ export async function startAssistantPrompt(mongoClient: MongoClient, conversatio
     const openaiMessages = messages.map(({ role, content }) => ({ role, content }));
     const relevantInfoString = listRelevantInformation(relevantInfo);
 
-    await sendCompletionRequest({ 
-        messageGroupId: conversationId,
-        label:          'chat',
-        kind:           'stream',
-        systemMessage: `
-            ${systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0)}
-            ${openaiMessages.length > 0 ? `
-                Current known information about the ${purpose.context}:
-                ${relevantInfoString}
-                Do not echo this to the user.
-            ` : ''}
-        `,
-        messages: [
-            ...openaiMessages.slice(-16),
+    const chatPipelineItem : PipelineItemConfig = {
+        request: {
+            alias: 'chat',
+            kind: 'stream',
+            systemMessage: systemPrompt`
+                ${systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0)}
+                ${openaiMessages.length > 0 ? `
+                    Current known information about the ${purpose.context}:
+                    ${relevantInfoString}
+                    Do not echo this to the user.
+                ` : ''}
+            `,
+            messages: [
+                ...openaiMessages.slice(-16)
+            ]
+        }
+    };
+    
+    if (!intentDetection) {
+        const pipeline = Pipeline.fromItems({
+            request: {
+                alias: 'chat',
+                kind: 'stream',
+                systemMessage: systemPrompt`
+                    ${systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0)}
+                    ${openaiMessages.length > 0 ? `
+                        Current known information about the ${purpose.context}:
+                        ${relevantInfoString}
+                        Do not echo this to the user.
+                    ` : ''}
+                `,
+                messages: [
+                    ...openaiMessages.slice(-16)
+                ]
+            }
+        }, responseMessage.aiPipelineId);
+        
+        await pipeline.saveToQueue();
+
+        return;
+    }
+
+    await Pipeline.fromItems({
+        parallel: [
+            {
+                sequence: [
+                    createSentenceSplittingPrompt(openaiMessages, relevantInfo),
+                    createIntentDetectionPrompt(relevantInfo)
+                ]
+            },
+            chatPipelineItem
         ]
-    });
+    }, responseMessage.aiPipelineId).saveToQueue();
 }
 
 export function processSplitSentences(message: string) {
@@ -220,33 +252,30 @@ export function processSplitSentences(message: string) {
         : message;
 }
 
-export async function startIntentDetection(conversationId: string, messages: ChatCompletionRequestMessage[], splitSentences: string, relevantInfo: RelevantInformation) {
-    if (messages.length < 2) {
-        return;
-    }
-
+function createIntentDetectionPrompt(relevantInfo: RelevantInformation) : PipelineItemConfig {
     const relevantInfoStr = listRelevantInformation(relevantInfo);
 
-    await sendCompletionRequest({
-        messageGroupId: conversationId,
-        label: 'intentDetection',
-        kind: 'function',
-        functionName: 'generateIntents',
-        functions: [generateIntentsSchema(relevantInfo.type)],
-        systemMessage: `
-            You are an intent classifier. 
-            Do not generate redundant intents. 
-            Do not leave out any user-provided information. 
-            Only use the information provided by the user.
-            The intent content must closely match the information provided by the user.
-
-            Current up-to-date information about the ${relevantInfo.type}:
-            ${relevantInfoStr}
-        `,
-        messages: [
-            userPrompt`${splitSentences}`
-        ]
-    });
+    return {
+        request: {
+            alias: 'intentDetection',
+            kind: 'function',
+            functionName: 'generateIntents',
+            functions: [generateIntentsSchema(relevantInfo.type)],
+            systemMessage: `
+                You are an intent classifier. 
+                Do not generate redundant intents. 
+                Do not leave out any user-provided information. 
+                Only use the information provided by the user.
+                The intent content must closely match the information provided by the user.
+    
+                Current up-to-date information about the ${relevantInfo.type}:
+                ${relevantInfoStr}
+            `,
+            messages: [
+                userPrompt`${prevResult(new RegExp(`^(?:(?:.|[\\r\\n])*(?=${splitSentencePrefix})${splitSentencePrefix})?((?:.|[\\r\\n])*)$`), 1)}`
+            ]
+        }
+    }
 }
 
 export function* processIntentDetectionResults({ intents }: { intents: Intent[] }) : Generator<Intent> {

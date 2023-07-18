@@ -1,8 +1,26 @@
-import { logger, startServer } from "./queue";
+import 'dotenv/config';
+
 import http from 'http';
+import { createItemsWatcher } from "./pipeline/itemsWatcher";
+import { createPipelinesWatcher } from "./pipeline/pipelinesWatcher";
+import { createRequestsWatcher } from "./pipeline/requestsWatcher";
+import { createLogger } from './pipeline/logger';
 const { REDIS_URL } = process.env;
 
-logger.info(`Connecting to Redis at ${REDIS_URL}`);
+const logger = createLogger();
+
+async function startServer() {    
+    const pipelinesWatcher = await createPipelinesWatcher();
+    const itemsWatcher = await createItemsWatcher();
+    const requestsWatcher = await createRequestsWatcher();
+    
+    logger.info(`Connecting to Redis at ${REDIS_URL}`);
+
+    pipelinesWatcher.watch();
+    itemsWatcher.watch();
+    requestsWatcher.watch();
+}
+
 startServer();
 
 http.createServer((req, res) => {

@@ -1,5 +1,5 @@
 import { Session, authorize } from "@/app/api/auth";
-import { findRelevantInformation, getConversationCollection, Message, startAssistantPrompt, startSentenceSplitting } from "@/app/api/conversation";
+import { findRelevantInformation, getConversationCollection, Message, startAssistantPrompt } from "@/app/api/conversation";
 import { mongo } from "@/app/mongo";
 import { MongoClient } from "mongodb";
 import { NextRequest, NextResponse } from "next/server";
@@ -22,23 +22,17 @@ class Route {
         }
 
         const newMessage : Message = {        
-            role:                      'user',
-            content:                   message,
-            id:                        uuid(),
-            chatPending:               false,
-            splitSentencesPending:     false,
-            intentDetectionPending:    false,
-            lastSeenChatId:            '',
-            lastSeenIntentDetectionId: '',
+            role:         'user',
+            content:      message,
+            id:           uuid(),
+            aiPipelineId: '',
+            pending:      false
         };
 
         await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });
-        const { messages, purpose } = (await conversations.findOne({ _id: conversationId }))!;
-        const openaiMessages = messages.map(({ role, content }) => ({ role, content }));
+        const { purpose } = (await conversations.findOne({ _id: conversationId }))!;
         const relevantInfo = await findRelevantInformation(conversationId, purpose.type, purpose.context);
-
         await startAssistantPrompt(mongoClient, conversationId, true, relevantInfo);
-        await startSentenceSplitting(openaiMessages, relevantInfo, conversationId);
         
         return NextResponse.json("ok");
     }

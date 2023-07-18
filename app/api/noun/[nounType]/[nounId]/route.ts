@@ -2,7 +2,6 @@ import { Session, authorize } from "@/app/api/auth";
 import { getMongoDatabase, mongo } from "@/app/mongo";
 import { NextRequest, NextResponse } from "next/server";
 import { Noun, NounType } from "../../../noun";
-import { revalidateTag } from "next/cache";
 import { MongoClient } from "mongodb";
 import { Conversation } from "@/app/api/conversation";
 
