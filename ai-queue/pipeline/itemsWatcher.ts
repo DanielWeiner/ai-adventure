@@ -12,7 +12,6 @@ class ItemsWatcher {
     #resolveWatchPromise    : () => void = () => {};
     #donePromise            : Promise<void> = Promise.resolve();
     #resolveDonePromise     : () => void = () => {};
-    #abort                  : boolean = false;
 
     constructor(queueConsumer: QueueConsumer, itemProcessor: PipelineItemProcessor) {
         this.#queueConsumer = queueConsumer;

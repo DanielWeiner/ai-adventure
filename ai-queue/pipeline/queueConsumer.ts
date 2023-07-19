@@ -5,31 +5,6 @@ const DEFAULT_CHUNK_SIZE = 10;
 const DEFAULT_POLL_TIME = 1000;
 const TEMP_GROUP = '__temp__';
 
-function checkPromise<T>(promise: Promise<T>) : Promise<boolean> {
-    return new Promise((resolve, reject) => {
-        let resolved = false;
-
-        promise.then(() => {
-            if (!resolved) {
-                resolved = true;
-                resolve(true);
-            }
-        }, err => {
-            if (!resolved) {
-                resolved = true;
-                reject(err);
-            }
-        });
-
-        setImmediate(() => {
-            if (!resolved) {
-                resolved = true;
-                resolve(false)
-            }
-        });
-    });
-}
-
 export default class QueueConsumer {
     #redisClient              : RedisClientType;
     #prevRedisClient          : RedisClientType | null = null;
@@ -67,8 +42,9 @@ export default class QueueConsumer {
     }
 
     async *watch(until: Promise<void>) : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
-        const checkUntil = () => checkPromise(until);
-
+        let done = false;
+        until.then(() => done = true);
+        
         await this.#redisClient
             .multi()
                 .xGroupCreate(this.#key, TEMP_GROUP, '0', { MKSTREAM: true })
@@ -83,7 +59,7 @@ export default class QueueConsumer {
         });
 
         mainLoop:
-        while (!await checkUntil()) {
+        while (!done) {
             await this.#ensureGroupExists();
             const items = await Promise.race([
                 until,
@@ -111,7 +87,7 @@ export default class QueueConsumer {
             }
 
             for (const message of items?.[0].messages) {
-                if (await checkUntil()) {
+                if (done) {
                     break mainLoop;
                 }
                 
