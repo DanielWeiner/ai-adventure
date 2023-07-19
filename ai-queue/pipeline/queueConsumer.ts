@@ -7,7 +7,6 @@ const TEMP_GROUP = '__temp__';
 
 export default class QueueConsumer {
     #redisClient              : RedisClientType;
-    #prevRedisClient          : RedisClientType | null = null;
     readonly #key             : string;
     readonly #consumerGroupId : string;
     readonly #id              : string;
@@ -43,44 +42,30 @@ export default class QueueConsumer {
 
     async *watch(until: Promise<void>) : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
         let done = false;
-        until.then(() => done = true);
+        const whenDone = until.then(() => { done = true; });
         
         await this.#redisClient
             .multi()
                 .xGroupCreate(this.#key, TEMP_GROUP, '0', { MKSTREAM: true })
                 .xGroupDestroy(this.#key, TEMP_GROUP)
             .exec();
-        
-        const cleanup = until.then(async () => {
-            const newClient = this.#redisClient.duplicate();
-            await newClient.connect();
-            this.#prevRedisClient = this.#redisClient;
-            this.#redisClient = newClient;
-        });
 
         mainLoop:
         while (!done) {
             await this.#ensureGroupExists();
             const items = await Promise.race([
-                until,
+                whenDone,
                 this.#redisClient.xReadGroup(this.#consumerGroupId, this.#id, {
                     key: this.#key,
                     id: '>',
                 }, {
                     COUNT: this.#chunkSize,
                     BLOCK: this.#pollTime
-                }).then(async (data) => {
-                    const prevClient = this.#prevRedisClient;
-                    this.#prevRedisClient = null;
-                    if (prevClient !== null && prevClient) {
-                        prevClient.on('error', () => {});
-                        prevClient.on('end', () => {});
-                        await prevClient.disconnect();
-                    }
-                    return data;
                 })
             ]);
-
+            if (done) {
+                break;
+            }
 
             if (!items?.[0]?.messages?.length) {
                 continue;
@@ -94,7 +79,13 @@ export default class QueueConsumer {
                 yield message;
             }
         }
-        await cleanup;
+        const newClient = this.#redisClient.duplicate();
+        await newClient.connect();
+        const prevClient = this.#redisClient;
+        this.#redisClient = newClient;
+        prevClient.on('error', () => {});
+        prevClient.on('end', () => {});
+        prevClient.disconnect();
     }
 
     async #ensureGroupExists() {
