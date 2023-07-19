@@ -72,7 +72,7 @@ export default class ChatCompleter {
             } : null,
             functions: this.#functions
         };
-        this.#logger.info(`openai function call: ${JSON.stringify(options, null, 2)}`);
+        this.#logger.info(`openai function call: ${JSON.stringify(options)}`);
         const response = await this.#openAi.createChatCompletion(options);
         try {
             return JSON.parse(response.data.choices[0].message?.function_call?.arguments || 'null');
@@ -83,7 +83,7 @@ export default class ChatCompleter {
 
     async createChatCompletion(messages: ChatCompletionRequestMessage[]) : Promise<string> {
         const options = this.#createCompletionConfig(messages);
-        this.#logger.info(`openai chat completion: ${JSON.stringify(options, null, 2)}`);
+        this.#logger.info(`openai chat completion: ${JSON.stringify(options)}`);
         const response = await this.#openAi.createChatCompletion(options);
 
         return response.data.choices[0].message?.content || '';
@@ -95,7 +95,7 @@ export default class ChatCompleter {
             stream: true
         };
 
-        this.#logger.info(`openai streaming chat completion: ${JSON.stringify(options, null, 2)}`);
+        this.#logger.info(`openai streaming chat completion: ${JSON.stringify(options)}`);
         const { data: stream } = await this.#openAi.createChatCompletion(options, { responseType: 'stream' }) as unknown as AxiosResponse<IncomingMessage>;
 
         let cachedChunk = '';
