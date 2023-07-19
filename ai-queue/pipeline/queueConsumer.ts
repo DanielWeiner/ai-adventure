@@ -1,4 +1,4 @@
-import { RedisClientType } from "redis";
+import { RedisClientType, commandOptions } from "redis";
 import { v4 as uuid } from 'uuid';
 
 const DEFAULT_CHUNK_SIZE = 10;
@@ -56,7 +56,7 @@ export default class QueueConsumer {
             await this.#ensureGroupExists();
             const items = await Promise.race([
                 this.#donePromise,
-                this.#redisClient.xReadGroup(this.#consumerGroupId, this.#id, {
+                this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
                     key: this.#key,
                     id: '>',
                 }, {
