@@ -10,8 +10,6 @@ class ItemsWatcher {
     readonly #itemProcessor : PipelineItemProcessor;
     #watchPromise           : Promise<void> = Promise.resolve();
     #resolveWatchPromise    : () => void = () => {};
-    #donePromise            : Promise<void> = Promise.resolve();
-    #resolveDonePromise     : () => void = () => {};
 
     constructor(queueConsumer: QueueConsumer, itemProcessor: PipelineItemProcessor) {
         this.#queueConsumer = queueConsumer;
@@ -22,11 +20,8 @@ class ItemsWatcher {
         this.#watchPromise = new Promise((resolve) => {
             this.#resolveWatchPromise = resolve;
         });
-        this.#donePromise = new Promise((resolve) => {
-            this.#resolveDonePromise = resolve;
-        });
 
-        for await(const { id, message: { pipelineId, itemId } } of this.#queueConsumer.watch(this.#donePromise)) {
+        for await(const { id, message: { pipelineId, itemId } } of this.#queueConsumer.watch()) {
             await this.#itemProcessor.processItem(pipelineId, itemId);
             await this.#queueConsumer.ack(id);
         }
@@ -36,7 +31,7 @@ class ItemsWatcher {
     }
 
     async abortWatcher() {
-        this.#resolveDonePromise();
+        this.#queueConsumer.breakLoop();
         await this.#watchPromise;
     }
 

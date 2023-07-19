@@ -13,6 +13,9 @@ export default class QueueConsumer {
     readonly #chunkSize       : number;
     readonly #pollTime        : number;
     readonly #startMessageId  : string;
+    #done                     : boolean = false;
+    #donePromise              : Promise<void>;
+    #resolveDone              : () => void = () => {};
     
     constructor({ 
         redisClient, 
@@ -38,12 +41,10 @@ export default class QueueConsumer {
         this.#chunkSize = chunkSize;
         this.#pollTime = pollTime;
         this.#startMessageId = startMessageId;
+        this.#donePromise = new Promise(resolve => { this.#resolveDone = resolve; });
     }
 
-    async *watch(until: Promise<void>) : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
-        let done = false;
-        const whenDone = until.then(() => { done = true; });
-        
+    async *watch() : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
         await this.#redisClient
             .multi()
                 .xGroupCreate(this.#key, TEMP_GROUP, '0', { MKSTREAM: true })
@@ -51,10 +52,10 @@ export default class QueueConsumer {
             .exec();
 
         mainLoop:
-        while (!done) {
+        while (!this.#done) {
             await this.#ensureGroupExists();
             const items = await Promise.race([
-                whenDone,
+                this.#donePromise,
                 this.#redisClient.xReadGroup(this.#consumerGroupId, this.#id, {
                     key: this.#key,
                     id: '>',
@@ -63,7 +64,7 @@ export default class QueueConsumer {
                     BLOCK: this.#pollTime
                 })
             ]);
-            if (done) {
+            if (this.#done) {
                 break;
             }
 
@@ -72,7 +73,7 @@ export default class QueueConsumer {
             }
 
             for (const message of items?.[0].messages) {
-                if (done) {
+                if (this.#done) {
                     break mainLoop;
                 }
                 
@@ -86,6 +87,11 @@ export default class QueueConsumer {
         prevClient.on('error', () => {});
         prevClient.on('end', () => {});
         prevClient.disconnect();
+    }
+
+    breakLoop() {
+        this.#done = true;
+        this.#resolveDone();
     }
 
     async #ensureGroupExists() {

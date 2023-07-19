@@ -11,8 +11,6 @@ class RequestsWatcher {
     readonly #requestResolver : RequestResolver;
     #watchPromise           : Promise<void> = Promise.resolve();
     #resolveWatchPromise    : () => void = () => {};
-    #donePromise            : Promise<void> = Promise.resolve();
-    #resolveDonePromise     : () => void = () => {};
 
     constructor(queueConsumer: QueueConsumer, requestResolver: RequestResolver) {
         this.#queueConsumer = queueConsumer;
@@ -23,11 +21,8 @@ class RequestsWatcher {
         this.#watchPromise = new Promise((resolve) => {
             this.#resolveWatchPromise = resolve;
         });
-        this.#donePromise = new Promise((resolve) => {
-            this.#resolveDonePromise = resolve;
-        });
 
-        for await (const { id, message: { pipelineId, itemId, request } } of this.#queueConsumer.watch(this.#donePromise)) {            
+        for await (const { id, message: { pipelineId, itemId, request } } of this.#queueConsumer.watch()) {            
             this.#requestResolver.resolveRequest(id, pipelineId, itemId, JSON.parse(request));
         }
 
@@ -36,7 +31,7 @@ class RequestsWatcher {
     }
 
     async abortWatcher() {
-        this.#resolveDonePromise();
+        this.#queueConsumer.breakLoop();
         await this.#watchPromise;
     }
 

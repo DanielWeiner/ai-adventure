@@ -128,34 +128,32 @@ export class PipelineItem {
             startMessageId: '0'
         });        
         
-        const donePromise = new Promise<void>((resolve) => {
-            let timeoutHandle : NodeJS.Timeout;
-            let resolved = false;
-            const subscription = (val: string) => {
-                if (!resolved && val === '1') {
-                    resolved = true;
-                    clearTimeout(timeoutHandle);
-                    if (keyWatcher.isReady) {
-                        resolve();
-                    } else {
-                        keyWatcher.unsubscribe(this.calculateDoneChannel(), subscription).then(resolve);
-                    }
+        let timeoutHandle : NodeJS.Timeout;
+        let resolved = false;
+        const subscription = (val: string) => {
+            if (!resolved && val === '1') {
+                resolved = true;
+                clearTimeout(timeoutHandle);
+                if (keyWatcher.isReady) {
+                    queueConsumer.breakLoop();
+                } else {
+                    keyWatcher.unsubscribe(this.calculateDoneChannel(), subscription).then(() => queueConsumer.breakLoop());
                 }
-            };
-            timeoutHandle = setTimeout(() => { 
-                if (!resolved) {
-                    resolved = true;
-                    if (keyWatcher.isReady) {
-                        resolve();
-                    } else {
-                        keyWatcher.unsubscribe(this.calculateDoneChannel(), subscription).then(resolve);
-                    }
+            }
+        };
+        timeoutHandle = setTimeout(() => { 
+            if (!resolved) {
+                resolved = true;
+                if (keyWatcher.isReady) {
+                    queueConsumer.breakLoop();
+                } else {
+                    keyWatcher.unsubscribe(this.calculateDoneChannel(), subscription).then(() => queueConsumer.breakLoop());
                 }
-            }, timeout);
-            keyWatcher.subscribe(this.calculateDoneChannel(), subscription);
-        });
-
-        for await (const { id, message: { content, event } } of queueConsumer.watch(donePromise)) {
+            }
+        }, timeout);
+        keyWatcher.subscribe(this.calculateDoneChannel(), subscription);
+        
+        for await (const { id, message: { content, event } } of queueConsumer.watch()) {
             if (!events.length || events.includes(event as PipelineItemEvent)) {
                 await queueConsumer.ack(id);
                 yield { content, event } as { content: string; event: PipelineItemEvent };

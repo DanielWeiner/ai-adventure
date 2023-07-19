@@ -13,8 +13,7 @@ class PipelinesWatcher {
     readonly #logger            : Logger;
     #watchPromise               : Promise<void> = Promise.resolve();
     #resolveWatchPromise        : () => void = () => {};
-    #donePromise                : Promise<void> = Promise.resolve();
-    #resolveDonePromise         : () => void = () => {};
+
 
     constructor(queueConsumer: QueueConsumer, logger: Logger, itemsWriterClient: RedisClientType) {
         this.#queueConsumer = queueConsumer;
@@ -26,11 +25,8 @@ class PipelinesWatcher {
         this.#watchPromise = new Promise((resolve) => {
             this.#resolveWatchPromise = resolve;
         });
-        this.#donePromise = new Promise((resolve) => {
-            this.#resolveDonePromise = resolve;
-        });
 
-        for await(const { id, message: { content } } of this.#queueConsumer.watch(this.#donePromise)) {
+        for await(const { id, message: { content } } of this.#queueConsumer.watch()) {
             let pipelineConfig : Pipeline;
             try {
                 pipelineConfig = Pipeline.fromConfig(JSON.parse(content));
@@ -47,7 +43,7 @@ class PipelinesWatcher {
     }
 
     async abortWatcher() {
-        this.#resolveDonePromise();
+        this.#queueConsumer.breakLoop();
         await this.#watchPromise;
     }
 
