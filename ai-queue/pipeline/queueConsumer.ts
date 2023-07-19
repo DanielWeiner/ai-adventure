@@ -96,6 +96,7 @@ export default class QueueConsumer {
     }
 
     breakLoop() {
+        this.#done = true;
         this.#abortEmitter.emit('abort');
     }
 
