@@ -32,6 +32,7 @@ function checkPromise<T>(promise: Promise<T>) : Promise<boolean> {
 
 export default class QueueConsumer {
     #redisClient              : RedisClientType;
+    #prevRedisClient          : RedisClientType | null = null;
     readonly #key             : string;
     readonly #consumerGroupId : string;
     readonly #id              : string;
@@ -77,18 +78,15 @@ export default class QueueConsumer {
         const cleanup = until.then(async () => {
             const newClient = this.#redisClient.duplicate();
             await newClient.connect();
+            this.#prevRedisClient = this.#redisClient;
             this.#redisClient = newClient;
         });
 
         mainLoop:
         while (!await checkUntil()) {
             await this.#ensureGroupExists();
-            let client = this.#redisClient;
-            let aborted = false;
             const items = await Promise.race([
-                until.then(() => {
-                    aborted = true;
-                }),
+                until,
                 this.#redisClient.xReadGroup(this.#consumerGroupId, this.#id, {
                     key: this.#key,
                     id: '>',
@@ -96,10 +94,12 @@ export default class QueueConsumer {
                     COUNT: this.#chunkSize,
                     BLOCK: this.#pollTime
                 }).then(async (data) => {
-                    if (aborted && client.isReady) {
-                        client.on('error', () => {});
-                        client.on('end', () => {});
-                        await client.disconnect();
+                    const prevClient = this.#prevRedisClient;
+                    this.#prevRedisClient = null;
+                    if (prevClient !== null && prevClient) {
+                        prevClient.on('error', () => {});
+                        prevClient.on('end', () => {});
+                        await prevClient.disconnect();
                     }
                     return data;
                 })
