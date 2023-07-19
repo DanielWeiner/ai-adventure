@@ -4,14 +4,12 @@ import {
     ChatCompletionFunctions, 
     ChatCompletionRequestMessage, 
     ChatCompletionRequestMessageRoleEnum, 
-    Configuration, 
     CreateChatCompletionRequest, 
     CreateChatCompletionResponse, 
     CreateChatCompletionResponseChoicesInner, 
     OpenAIApi 
 } from "openai";
 import { Logger } from "winston";
-const { OPENAI_API_KEY } = process.env;
 
 interface ChatCompletionStreamResponseDelta {
     content?: string;

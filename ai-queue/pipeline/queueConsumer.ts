@@ -1,6 +1,7 @@
 import { RedisClientType, commandOptions } from "redis";
 import { v4 as uuid } from 'uuid';
 import { createRedisClient } from "./redisClient";
+import EventEmitter from "events";
 
 const DEFAULT_CHUNK_SIZE = 10;
 const DEFAULT_POLL_TIME = 10000;
@@ -17,7 +18,7 @@ export default class QueueConsumer {
     readonly #pollTime        : number;
     readonly #startMessageId  : string;
     #done                     : boolean = false;
-    #abortController          : AbortController;
+    #abortEmitter             : EventEmitter = new EventEmitter();
     
     constructor({ 
         redisClient, 
@@ -43,7 +44,6 @@ export default class QueueConsumer {
         this.#chunkSize = chunkSize;
         this.#pollTime = pollTime;
         this.#startMessageId = startMessageId;
-        this.#abortController = new AbortController();
     }
 
     async *watch() : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
@@ -61,25 +61,21 @@ export default class QueueConsumer {
             newClient.connect();
             this.#redisClient = newClient;
         };
+        
 
         mainLoop:
         while (!this.#done) {
-            await this.#ensureGroupExists();
-
-            this.#abortController = new AbortController();
-            this.#abortController.signal.addEventListener('abort', onAbort); 
-
-            let items : ReadResults | false = await this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
+            this.#abortEmitter.on('abort', onAbort);
+            let items : ReadResults | false = await this.#ensureGroupExists().then(() => this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
                 key: this.#key,
                 id: '>',
             }, {
                 COUNT: this.#chunkSize,
                 BLOCK: this.#pollTime
-            }).catch(() => {
+            })).catch(() => {
                 return false;
             });
-
-            this.#abortController.signal.removeEventListener('abort', onAbort);
+            this.#abortEmitter.off('abort', onAbort);
 
             if (items === false || this.#done) {
                 break;
@@ -100,8 +96,7 @@ export default class QueueConsumer {
     }
 
     breakLoop() {
-        this.#done = true;
-        this.#abortController.abort();
+        this.#abortEmitter.emit('abort');
     }
 
     async #ensureGroupExists() {
