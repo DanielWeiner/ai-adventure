@@ -148,8 +148,4 @@ export class RequestResolver {
 
         await this.#redisClient.xAck(PIPELINE_REQUESTS_QUEUE, PIPELINE_REQUESTS_CONSUMER_GROUP, messageId);
     }
-
-    async quit() {
-        await this.#redisClient.quit();
-    }
 }

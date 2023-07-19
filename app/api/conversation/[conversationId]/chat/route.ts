@@ -10,6 +10,7 @@ import { processChatIntents } from "@/app/lib/intent/processor";
 import { Pipeline } from "@/ai-queue/pipeline/pipeline";
 import { PIPELINE_ITEM_EVENT_CONTENT, PIPELINE_ITEM_EVENT_END } from "@/ai-queue/pipeline/constants";
 import { Intent } from "@/app/lib/intent";
+import { createRedisClient } from "@/ai-queue/pipeline/redisClient";
 
 const defaultHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -82,7 +83,8 @@ class Route {
     async GET(req: NextRequest, { params: { conversationId, session, mongoClient, mongoKeepOpen } } : { params: { session: Session, conversationId: string, userMessageId: string, mongoClient: MongoClient, mongoKeepOpen: () => {} } }) {
         const conversations = getConversationCollection(mongoClient);
         const conversation = await conversations.findOne({ '_id': conversationId, userId: session.user.id });
-        const clientId = uuid();
+        const requestId = new URL(req.url).searchParams.get('requestId') || uuid();
+        const redisClient = await createRedisClient();
 
         if (!conversation) {
             return NextResponse.json('Bad Request', { status: 400 });
@@ -94,7 +96,7 @@ class Route {
         const responseMessage = messages[messages.length - 1];
 
         if (responseMessage.pending) {
-            const pipeline = await Pipeline.fromId(responseMessage.aiPipelineId);
+            const pipeline = await Pipeline.fromId(responseMessage.aiPipelineId, redisClient);
             if (!pipeline) {
                 return NextResponse.json('Internal server error', { status: 500 });
             }
@@ -104,16 +106,15 @@ class Route {
                 await Promise.all([
                     (async () => {  
                         const chatItem = pipeline.getItemByRequestAlias('chat');
-                      
                         if (!chatItem) return;
-                        if (await chatItem.isDone()) {
-                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, message: await chatItem.getContent() })));
+                        if (await chatItem.isDone(redisClient)) {
+                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, message: await chatItem.getContent(redisClient) })));
                             return;
                         }
     
                         for await (const { content } of chatItem.watchStream({
-                            consumerGroupId: clientId, 
-                            consumerId:      clientId, 
+                            consumerGroupId: requestId, 
+                            consumerId:      requestId, 
                             timeout:         API_TIMEOUT,
                             events:          [PIPELINE_ITEM_EVENT_CONTENT]
                         })) {
@@ -132,21 +133,21 @@ class Route {
                                 } 
                             }, {
                                 $set: {
-                                    'messages.$.content': await chatItem.getContent()
+                                    'messages.$.content': await chatItem.getContent(redisClient)
                                 }
                             });
     
                             await chatItem.endOtherStreamWatchers();
                         };
 
-                        if (await chatItem.isDone()) {
+                        if (await chatItem.isDone(redisClient)) {
                             await finalize();
                             return;
                         }
     
                         for await (const {} of chatItem.watchStream({
                             consumerGroupId: 'chat', 
-                            consumerId:      clientId, 
+                            consumerId:      requestId, 
                             timeout:         API_TIMEOUT,
                             events:          [PIPELINE_ITEM_EVENT_END]
                         })) {
@@ -158,7 +159,7 @@ class Route {
                         const chatItem = pipeline.getItemByRequestAlias('chat')!;
 
                         const finalize = async () => {
-                            const chatContent = await chatItem.getContent();
+                            const chatContent = await chatItem.getContent(redisClient);
                             await conversations.updateOne({ 
                                 _id: conversationId, 
                                 messages: {
@@ -182,7 +183,7 @@ class Route {
     
                                 let results : { intents: Intent[] };
                                 try {
-                                    results = JSON.parse(await intentDetectionItem.getContent());
+                                    results = JSON.parse(await intentDetectionItem.getContent(redisClient));
                                 } catch {
                                     results = { intents: [] };
                                 }
@@ -212,14 +213,14 @@ class Route {
                             await endItem.endOtherStreamWatchers();
                         };
 
-                        if (await endItem.isDone() && await chatItem.isDone()) {
+                        if (await endItem.isDone(redisClient) && await chatItem.isDone(redisClient)) {
                             await finalize();
                             return;
                         }
                         
                         for await (const {} of endItem.watchStream({
                             consumerGroupId: 'end', 
-                            consumerId:      clientId, 
+                            consumerId:      requestId, 
                             timeout:         API_TIMEOUT,
                             events:          [PIPELINE_ITEM_EVENT_END]
                         })) {

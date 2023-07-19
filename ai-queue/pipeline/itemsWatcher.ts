@@ -1,9 +1,9 @@
 import QueueConsumer from "./queueConsumer";
 import { PipelineItemProcessor } from "./pipelineItemProcessor";
-import { createRedisClient } from "./redisClient";
 import { PIPELINE_ITEMS_CONSUMER_GROUP, PIPELINE_ITEMS_QUEUE } from "./constants";
 import { v4 as uuid } from 'uuid';
 import { createLogger } from "./logger";
+import { RedisClientType } from "redis";
 
 class ItemsWatcher {
     readonly #queueConsumer : QueueConsumer;
@@ -37,23 +37,22 @@ class ItemsWatcher {
 
     async quit() {
         await this.#queueConsumer.destroy();
-        await this.#itemProcessor.quit();
     }
 }
 
-export async function createItemsWatcher() {
+export function createItemsWatcher({ 
+    queueConsumerRedisClient, 
+    itemProcessorRedisClient 
+} : { 
+    queueConsumerRedisClient: RedisClientType,
+    itemProcessorRedisClient: RedisClientType
+}) {
     const queueConsumer = new QueueConsumer({
-        redisClient:     await createRedisClient(),
+        redisClient:     queueConsumerRedisClient,
         consumerGroupId: PIPELINE_ITEMS_CONSUMER_GROUP,
         key:             PIPELINE_ITEMS_QUEUE,
         id:              `${PIPELINE_ITEMS_CONSUMER_GROUP}:${uuid()}`
     });
-    const itemProcessor = new PipelineItemProcessor(await createRedisClient(), createLogger());
-    const itemsWatcher = new ItemsWatcher(queueConsumer, itemProcessor)
-
-    process.once('SIGTERM', async () => {
-        await itemsWatcher.abortWatcher();
-    });
-
-    return itemsWatcher;
+    const itemProcessor = new PipelineItemProcessor(itemProcessorRedisClient, createLogger());
+    return new ItemsWatcher(queueConsumer, itemProcessor);
 }

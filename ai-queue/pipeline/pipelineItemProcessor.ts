@@ -86,8 +86,4 @@ export class PipelineItemProcessor {
                 })
             .exec();
     }
-
-    async quit() {
-        await this.#redisClient.quit();
-    }
 }

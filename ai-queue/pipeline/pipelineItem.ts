@@ -1,7 +1,8 @@
+import { RedisClientType } from "redis";
 import { PipelineItemEvent } from "./constants";
 import { PipelineItemCollectionItem } from "./itemCollection";
 import QueueConsumer from "./queueConsumer";
-import { createRedisClient } from "./redisClient";
+import { createRedisClient, useRedisClient } from "./redisClient";
 
 export class PipelineItem {
     #id: string;
@@ -86,24 +87,22 @@ export class PipelineItem {
         return this.#collectionItem.request.alias;
     }
 
-    async isDone() {
-        const redisClient = await createRedisClient();
-        const content = await redisClient.get(this.calculateDoneKey());
-        await redisClient.quit();
-        return content === '1';
+    async isDone(redisClient?: RedisClientType) {
+        return useRedisClient(redisClient)(async client => {
+            return '1' === await client.get(this.calculateDoneKey());
+        });
     }
 
-    async getContent() {
-        const redisClient = await createRedisClient();
-        const content = await redisClient.get(this.calculateContentKey());
-        await redisClient.quit();
-        return content || '';
+    async getContent(redisClient?: RedisClientType) {
+        return useRedisClient(redisClient)(async client => {
+            return await client.get(this.calculateContentKey()) || '';
+        })
     }
 
-    async endOtherStreamWatchers() {
-        const redisClient = await createRedisClient();
-        await redisClient.publish(this.calculateDoneChannel(), '1');
-        await redisClient.quit();
+    async endOtherStreamWatchers(redisClient?: RedisClientType) {
+        return useRedisClient(redisClient)(async client => {
+            return client.publish(this.calculateDoneChannel(), '1');
+        });
     }
 
     async *watchStream({
@@ -117,11 +116,9 @@ export class PipelineItem {
         timeout:         number;
         events?:         PipelineItemEvent[];
     }) : AsyncGenerator<{ content: string, event: PipelineItemEvent }> {
-        const redisClient = await createRedisClient();
-        const keyWatcher = await createRedisClient();
-
+        const subscriber = await createRedisClient();
         const queueConsumer = new QueueConsumer({
-            redisClient,
+            redisClient: await createRedisClient(),
             consumerGroupId,
             id: consumerId,
             key: this.calculateStreamKey(),
@@ -129,29 +126,17 @@ export class PipelineItem {
         });        
         
         let timeoutHandle : NodeJS.Timeout;
-        let resolved = false;
         const subscription = (val: string) => {
-            if (!resolved && val === '1') {
-                resolved = true;
+            if (val === '1') {
                 clearTimeout(timeoutHandle);
-                if (keyWatcher.isReady) {
-                    queueConsumer.breakLoop();
-                } else {
-                    keyWatcher.unsubscribe(this.calculateDoneChannel(), subscription).then(() => queueConsumer.breakLoop());
-                }
+                queueConsumer.breakLoop();
             }
         };
         timeoutHandle = setTimeout(() => { 
-            if (!resolved) {
-                resolved = true;
-                if (keyWatcher.isReady) {
-                    queueConsumer.breakLoop();
-                } else {
-                    keyWatcher.unsubscribe(this.calculateDoneChannel(), subscription).then(() => queueConsumer.breakLoop());
-                }
-            }
+            queueConsumer.breakLoop();
         }, timeout);
-        keyWatcher.subscribe(this.calculateDoneChannel(), subscription);
+
+        subscriber.subscribe(this.calculateDoneChannel(), subscription);
         
         for await (const { id, message: { content, event } } of queueConsumer.watch()) {
             if (!events.length || events.includes(event as PipelineItemEvent)) {
@@ -161,6 +146,6 @@ export class PipelineItem {
         }
 
         await queueConsumer.destroy();
-        await keyWatcher.quit();
+        await subscriber.quit();
     }
 }

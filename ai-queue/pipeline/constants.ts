@@ -1,5 +1,3 @@
-export const PIPELINES_QUEUE = 'aiq:pipelines';
-export const PIPELINES_CONSUMER_GROUP = 'aiq:pipelines:consumers';
 export const PIPELINE_ITEMS_QUEUE = 'aiq:pipelineItems';
 export const PIPELINE_ITEMS_CONSUMER_GROUP = 'aiq:pipelineItems:consumers';
 export const PIPELINE_REQUESTS_QUEUE = 'aiq:pipelineRequests';

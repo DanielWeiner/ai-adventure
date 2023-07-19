@@ -13,3 +13,13 @@ export const createRedisClient = async () => {
 
     return client;
 };
+
+export const useRedisClient = (redisClient?: RedisClientType) => async <T>(callback: (redisClient: RedisClientType) => Promise<T>) => {
+    const client : RedisClientType = redisClient ?? await createRedisClient() as RedisClientType;
+    const result = await callback(client);
+    if (!redisClient) {
+        await client.quit();
+    }
+
+    return result;
+}

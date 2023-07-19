@@ -59,7 +59,7 @@ export default function ChatBox({ conversationId } : {
         if (!messagesFetched || fetchStatus === 'fetching') return;
         if (!pendingChat) return;
         if (!eventSource) {
-            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat`));
+            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}`));
         }
     }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus ]);
 

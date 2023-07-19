@@ -1,9 +1,12 @@
 import { RedisClientType, commandOptions } from "redis";
 import { v4 as uuid } from 'uuid';
+import { createRedisClient } from "./redisClient";
 
 const DEFAULT_CHUNK_SIZE = 10;
-const DEFAULT_POLL_TIME = 1000;
+const DEFAULT_POLL_TIME = 10000;
 const TEMP_GROUP = '__temp__';
+
+type ReadResults = ReturnType<RedisClientType['xReadGroup']> extends Promise<infer T> ? T : never;
 
 export default class QueueConsumer {
     #redisClient              : RedisClientType;
@@ -14,8 +17,7 @@ export default class QueueConsumer {
     readonly #pollTime        : number;
     readonly #startMessageId  : string;
     #done                     : boolean = false;
-    #donePromise              : Promise<void>;
-    #resolveDone              : () => void = () => {};
+    #abortController          : AbortController;
     
     constructor({ 
         redisClient, 
@@ -41,7 +43,7 @@ export default class QueueConsumer {
         this.#chunkSize = chunkSize;
         this.#pollTime = pollTime;
         this.#startMessageId = startMessageId;
-        this.#donePromise = new Promise(resolve => { this.#resolveDone = resolve; });
+        this.#abortController = new AbortController();
     }
 
     async *watch() : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
@@ -51,22 +53,37 @@ export default class QueueConsumer {
                 .xGroupDestroy(this.#key, TEMP_GROUP)
             .exec();
 
+        const onAbort = async () => {
+            const oldClient = this.#redisClient;
+            oldClient.on('error', () => {});
+            const newClient = this.#redisClient.duplicate();
+            oldClient.disconnect().catch(() => {});
+            newClient.connect();
+            this.#redisClient = newClient;
+        };
+
         mainLoop:
         while (!this.#done) {
             await this.#ensureGroupExists();
-            const items = await Promise.race([
-                this.#donePromise,
-                this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
-                    key: this.#key,
-                    id: '>',
-                }, {
-                    COUNT: this.#chunkSize,
-                    BLOCK: this.#pollTime
-                })
-            ]);
-            if (this.#done) {
+
+            this.#abortController = new AbortController();
+            this.#abortController.signal.addEventListener('abort', onAbort); 
+
+            let items : ReadResults | false = await this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
+                key: this.#key,
+                id: '>',
+            }, {
+                COUNT: this.#chunkSize,
+                BLOCK: this.#pollTime
+            }).catch(() => {
+                return false;
+            });
+
+            this.#abortController.signal.removeEventListener('abort', onAbort);
+
+            if (items === false || this.#done) {
                 break;
-            }
+            } 
 
             if (!items?.[0]?.messages?.length) {
                 continue;
@@ -80,18 +97,11 @@ export default class QueueConsumer {
                 yield message;
             }
         }
-        const newClient = this.#redisClient.duplicate();
-        await newClient.connect();
-        const prevClient = this.#redisClient;
-        this.#redisClient = newClient;
-        prevClient.on('error', () => {});
-        prevClient.on('end', () => {});
-        prevClient.disconnect();
     }
 
     breakLoop() {
         this.#done = true;
-        this.#resolveDone();
+        this.#abortController.abort();
     }
 
     async #ensureGroupExists() {
@@ -102,11 +112,6 @@ export default class QueueConsumer {
     }
     async destroy() {
         await this.#redisClient.xGroupDelConsumer(this.#key, this.#consumerGroupId, this.#id);
-        await this.quit();
-    }
-
-    async quit() {
-        await this.#redisClient.quit();
     }
 
     async ack(messageId: string) {

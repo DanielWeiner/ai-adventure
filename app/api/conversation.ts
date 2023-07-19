@@ -210,7 +210,7 @@ export async function startAssistantPrompt(mongoClient: MongoClient, conversatio
     };
     
     if (!intentDetection) {
-        const pipeline = Pipeline.fromItems({
+        return Pipeline.fromItems({
             request: {
                 alias: 'chat',
                 kind: 'stream',
@@ -226,14 +226,10 @@ export async function startAssistantPrompt(mongoClient: MongoClient, conversatio
                     ...openaiMessages.slice(-16)
                 ]
             }
-        }, responseMessage.aiPipelineId);
-        
-        await pipeline.saveToQueue();
-
-        return;
+        }, responseMessage.aiPipelineId).saveToQueue();
     }
 
-    await Pipeline.fromItems({
+    return Pipeline.fromItems({
         parallel: [
             {
                 sequence: [

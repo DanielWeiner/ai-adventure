@@ -1,9 +1,10 @@
 import { v4 as uuid } from 'uuid';
 import { PipelineItemCollection, buildItemCollection } from './itemCollection';
 import { PipelineItemConfig } from './config';
-import { createRedisClient } from './redisClient';
-import { PIPELINES_QUEUE } from './constants';
+import { PIPELINE_ITEMS_QUEUE } from './constants';
 import { PipelineItem } from './pipelineItem';
+import { RedisClientType } from 'redis';
+import { useRedisClient } from './redisClient';
 
 export interface PipelineConfig {
     id:      string;
@@ -31,10 +32,8 @@ export class Pipeline {
         });
     }
 
-    static async fromId(pipelineId: string) {
-        const redisClient = await createRedisClient();
+    static async fromId(pipelineId: string, redisClient: RedisClientType) {
         const pipelineStr = await redisClient.get(Pipeline.calculateRedisKey(pipelineId));
-        await redisClient.quit();
 
         if (!pipelineStr) {
             return null;
@@ -51,47 +50,59 @@ export class Pipeline {
         return new Pipeline(config);
     }
 
-    async saveToQueue() {
-        const client = await createRedisClient();
-        await client.xAdd(PIPELINES_QUEUE, '*', { content: this.toString() });
-        await client.quit();
+    async saveToQueue(redisClient?: RedisClientType) {
+        return useRedisClient(redisClient)(async client => {
+            const multi = client
+                .multi()
+                .set(this.calculateRedisKey(), this.toString())
+                .xAdd(PIPELINE_ITEMS_QUEUE, '*', {
+                    pipelineId: this.getId(),
+                    itemId:     this.getBeginId()
+                });
+            
+            for (const item of this.getItems()) {
+                multi.incrBy(item.calculatePrevIdsKey(), item.getPrevIds().length);
+            }
+
+            await multi.exec();
+        });
     }
 
-    async destroyItem(itemId: string) {
-        const client = await createRedisClient();
-        const item = this.getItem(itemId);
-        if (!item) {
-            return;
-        }
+    async destroyItem(itemId: string, redisClient?: RedisClientType) {
+        return useRedisClient(redisClient)(async client =>{
+            const item = this.getItem(itemId);
+            if (!item) {
+                return;
+            }
 
-        await client
-            .multi()
-                .del(item.calculateContentKey())
-                .del(item.calculateDoneKey())
-                .del(item.calculateStreamKey())
-                .del(item.calculatePrevIdsKey())
-            .exec();
-        await client.quit();
+            await client
+                .multi()
+                    .del(item.calculateContentKey())
+                    .del(item.calculateDoneKey())
+                    .del(item.calculateStreamKey())
+                    .del(item.calculatePrevIdsKey())
+                .exec();
+        });
     }
 
-    async destroy() {
-        const client = await createRedisClient();
-        const multi = client.multi();
+    async destroy(redisClient?: RedisClientType) {
+        return useRedisClient(redisClient)(async client => {
+            const multi = client.multi();
         
-        for (const key of Object.keys(this.#config.items)) {
-            const item = this.getItem(key)!;
+            for (const key of Object.keys(this.#config.items)) {
+                const item = this.getItem(key)!;
 
-            multi
-                .del(item.calculateContentKey())
-                .del(item.calculateDoneKey())
-                .del(item.calculateStreamKey())
-                .del(item.calculatePrevIdsKey())
-        }
-        
-        await multi
-            .del(this.calculateRedisKey())
-            .exec();
-        await client.quit();
+                multi
+                    .del(item.calculateContentKey())
+                    .del(item.calculateDoneKey())
+                    .del(item.calculateStreamKey())
+                    .del(item.calculatePrevIdsKey())
+            }
+            
+            await multi
+                .del(this.calculateRedisKey())
+                .exec();
+        });
     }
 
     static calculateRedisKey(id: string) {
