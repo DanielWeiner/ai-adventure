@@ -7,13 +7,13 @@ import { NounType } from "@/app/api/noun";
 
 export default async function Create({ params: { pageName, nounId } } : { params: { pageName: NounType, nounId: string } }){
     const initialState = await generateInitialState({ pageName, nounId });
-    const { nounType, noun, sessionToken } = initialState;
+    const { nounType, noun, sessionToken, awaitingNewNoun } = initialState;
     
     if (!nounType) {
         return notFound();
     }
 
-    if (!noun) {
+    if (!noun && !awaitingNewNoun) {
         return redirect(`/create/${nounType}`);
     }
 

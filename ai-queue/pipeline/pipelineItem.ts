@@ -1,17 +1,18 @@
 import { RedisClientType } from "redis";
-import { PipelineItemEvent } from "./constants";
+import { PIPELINE_ITEMS_QUEUE, PIPELINE_ITEM_EVENT_END, PipelineItemEvent } from "./constants";
 import { PipelineItemCollectionItem } from "./itemCollection";
 import QueueConsumer from "./queueConsumer";
 import { createRedisClient, useRedisClient } from "./redisClient";
+import { Pipeline } from "./pipeline";
 
 export class PipelineItem {
-    #id: string;
-    #pipelineId: string;
+    #id:             string;
+    #pipeline:       Pipeline;
     #collectionItem: PipelineItemCollectionItem;
 
-    constructor(id: string, pipelineId: string, collectionItem: PipelineItemCollectionItem) {
+    constructor(id: string, pipeline: Pipeline, collectionItem: PipelineItemCollectionItem) {
         this.#id = id;
-        this.#pipelineId = pipelineId;
+        this.#pipeline = pipeline;
         this.#collectionItem = collectionItem;
     }
 
@@ -28,7 +29,7 @@ export class PipelineItem {
     }
 
     static calculatePrevIdsKey(itemId: string) {
-        return `aiq:pipelineItems:${itemId}:done`;
+        return `aiq:pipelineItems:${itemId}:prevIds`;
     }
 
     static calculateDoneChannel(itemId: string) {
@@ -52,7 +53,7 @@ export class PipelineItem {
     }
 
     getPipelineId() {
-        return this.#pipelineId;
+        return this.#pipeline.getId();
     }
 
     getPrevIds() {
@@ -89,7 +90,7 @@ export class PipelineItem {
 
     async isDone(redisClient?: RedisClientType) {
         return useRedisClient(redisClient)(async client => {
-            return '1' === await client.get(this.calculateDoneKey());
+            return await client.get(this.calculateDoneKey()) === '1';
         });
     }
 
@@ -102,6 +103,42 @@ export class PipelineItem {
     async endOtherStreamWatchers(redisClient?: RedisClientType) {
         return useRedisClient(redisClient)(async client => {
             return client.publish(this.calculateDoneChannel(), '1');
+        });
+    }
+
+    async confirmCompleted(redisClient?: RedisClientType) {
+        return useRedisClient(redisClient)(async client => {
+            if (await this.isDone(client)) {
+                return;
+            }
+
+            await client.multi()
+                .set(this.calculateDoneKey(), '1')
+                .publish(this.calculateDoneChannel(), '1')
+            .exec();
+
+            const nextItems = this.getNextIds().map(id => this.#pipeline.getItem(id)!);
+
+            if (nextItems.length) {
+                const multi = client.multi();
+                for (const item of nextItems) {
+                    multi.decr(item.calculatePrevIdsKey());
+                }
+
+                const results = await multi.exec() as number[];
+                const requestsToTrigger = nextItems.filter((_, i) => !results[i]);
+                
+                if (requestsToTrigger.length) {
+                    const multi = client.multi();
+                    for (const item of requestsToTrigger) {
+                        multi.xAdd(PIPELINE_ITEMS_QUEUE, '*', {
+                            pipelineId: item.getPipelineId(),
+                            itemId:     item.getId()
+                        });
+                    }
+                    await multi.exec();
+                }
+            }
         });
     }
 

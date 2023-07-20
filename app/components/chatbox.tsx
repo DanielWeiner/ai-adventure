@@ -25,30 +25,44 @@ const ChatBubble = ({ role, children } : { children: React.ReactNode, role: stri
 }
 
 export default function ChatBox({ conversationId } : { 
-    conversationId: string
+    conversationId: string | null
 }) {
     const [ text, setText ] = useState("");
-
     const [ eventSource, setEventSource ] = useState<EventSource | null>(null);
-    const { sessionToken, messages: remoteChatLog, nounType, noun } = useCreationContext();
-    
+    const { sessionToken, messages: remoteChatLog, nounType, noun, awaitingNewNoun } = useCreationContext();
+    const [ eventSourceHandler, setEventSourceHandler ] = useState<((event: MessageEvent) => void) | null>(null);
+    const [ endingEventSource, setEndingEventSource ] = useState(false);
+
+    const conversationQueryKey = `conversation_${sessionToken}_${conversationId ?? 'new' }`;
+    const nounsQueryKey = `noun_${sessionToken}_${nounType}`;
+    const currentNounQueryKey = `noun_${sessionToken}_${nounType}_${noun?._id ?? 'new' }`;
+
     const { data: messages, isFetched: messagesFetched, fetchStatus } = useQuery({
-        queryKey: [`conversation_${sessionToken}_${conversationId}`],
-        queryFn: () => getMessages(conversationId),
+        queryKey: [conversationQueryKey],
+        queryFn: () => conversationId ? getMessages(conversationId) : [],
         initialData: remoteChatLog
     });
 
-    const lastMessage = messages[messages.length - 1];
+    const lastMessage = messages.findLast(message => message.role === 'assistant') ?? { pending: true, content: ''};
     const pendingChat = lastMessage.pending;
     const loadingBubble = pendingChat && !lastMessage.content;
 
     const queryClient = useQueryClient();
     const postMessageMutation = useMutation({
         mutationFn: postMessage,
-        onSuccess: ({}, { conversationId }) => {
-            queryClient.invalidateQueries([`conversation_${sessionToken}_${conversationId}`]);
+        onSuccess: () => {
+            queryClient.invalidateQueries([conversationQueryKey]);
         },
-        onMutate: () => {
+        onMutate: ({ message }) => {
+            queryClient.setQueryData([conversationQueryKey], (messages: Message[] | undefined) => (messages || []).concat([
+                {
+                    aiPipelineId: '',
+                    content: message,
+                    id: 'new',
+                    pending: false,
+                    role: 'user'
+                }
+            ]))
             setText('');
         }
     });
@@ -56,34 +70,48 @@ export default function ChatBox({ conversationId } : {
     const scroller = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        if (!messagesFetched || fetchStatus === 'fetching') return;
-        if (!pendingChat) return;
-        if (!eventSource) {
-            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}`));
+        if (!awaitingNewNoun) {
+            queryClient.invalidateQueries([ conversationQueryKey ]);
         }
-    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus ]);
+    }, [ awaitingNewNoun, conversationQueryKey, queryClient ]);
+
+    useEffect(() => {
+        if (!endingEventSource) {
+            return;
+        }
+
+        queryClient.invalidateQueries([conversationQueryKey]);
+
+        if (eventSourceHandler && eventSource) {
+            eventSource.removeEventListener('message', eventSourceHandler);
+        }
+        if (eventSourceHandler) {
+            setEventSourceHandler(null);
+        }
+        if (eventSource) {
+            eventSource.close();
+            setEventSource(null);
+        }
+        setEndingEventSource(false);
+    }, [ endingEventSource, conversationQueryKey, eventSource, setEndingEventSource, eventSourceHandler, eventSourceHandler, queryClient ]);
 
     useEffect(() => {
         if (!messagesFetched || fetchStatus === 'fetching') return;
-        if (!eventSource) return;
-        const queryKey = `conversation_${sessionToken}_${conversationId}`;
+        if (!pendingChat || endingEventSource) return;
+        if (!eventSource && conversationId) {
+            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}`));
+        }
+    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus, endingEventSource ]);
 
-        const onMessage = (event: MessageEvent) => {
-            const end = () => {
-                setEventSource(eventSource => {
-                    if (!eventSource) return null;
-                    eventSource.removeEventListener('message', onMessage);
-                    eventSource.close();
-                    return null;
-                });
-                queryClient.invalidateQueries([ queryKey ]);
-            };
-            
+    useEffect(() => {
+        if (!messagesFetched || fetchStatus === 'fetching') return;
+        if (!eventSource || endingEventSource) return;
+
+        const onMessage = (event: MessageEvent) => {        
             try {
                 const data = JSON.parse(event.data);
-
                 if (typeof data.messageId === 'string' && typeof data.message === 'string') {
-                    queryClient.setQueryData([queryKey], (messages: Message[] | undefined) => (messages || []).map(({ id, content, ...rest }) => (
+                    queryClient.setQueryData([conversationQueryKey], (messages: Message[] | undefined) => (messages || []).map(({ id, content, ...rest }) => (
                         id === data.messageId ? {
                             id,
                             ...rest,
@@ -95,25 +123,39 @@ export default function ChatBox({ conversationId } : {
 
                 if (data.events) {
                     if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
-                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}`]);
-                        queryClient.invalidateQueries([`noun_${sessionToken}_${nounType}_${noun?._id}`]);
+                        queryClient.invalidateQueries([nounsQueryKey]);
+                        queryClient.invalidateQueries([currentNounQueryKey]);
                     }
                     return;
                 }
                 if (data.done) {
-                    return end();
+                    return setEndingEventSource(true);
                 }
             } catch(e) {
                 console.error(e);
-                return end();
+                return setEndingEventSource(true);
             }
         }
 
-        eventSource.addEventListener('message', onMessage);
-        return () => {
-            eventSource.removeEventListener('message', onMessage);
+        setEventSourceHandler((currentHandler: ((message: MessageEvent) => void) | null) => {
+            if (currentHandler) {
+                eventSource.removeEventListener('message', currentHandler);
+            }
+            return onMessage;
+        })
+    }, [ eventSource, conversationQueryKey, nounsQueryKey, currentNounQueryKey, queryClient, messagesFetched, fetchStatus, setEventSourceHandler, endingEventSource, setEndingEventSource ])
+
+    useEffect(() => {
+        if (!eventSource || !eventSourceHandler) {
+            return;
         }
-    }, [ eventSource, conversationId, sessionToken, noun?._id, nounType, queryClient, setEventSource, messagesFetched, fetchStatus ])
+
+        eventSource.addEventListener('message', eventSourceHandler);
+
+        return () => {
+            eventSource.removeEventListener('message', eventSourceHandler);
+        };
+    }, [eventSource, eventSourceHandler]);
 
     useEffect(() => {
         scroller.current?.scrollTo(0, 999999999);
@@ -146,7 +188,7 @@ export default function ChatBox({ conversationId } : {
                 onSubmit={ 
                     (e) => {
                         e.preventDefault();
-                        if (text.trim() && !eventSource) {
+                        if (text.trim() && !eventSource && conversationId) {
                             postMessageMutation.mutate({ conversationId, message: text });
                         }
                     } 

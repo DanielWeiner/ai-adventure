@@ -28,7 +28,8 @@ export interface PipelineItemRequestConfig {
     systemMessage?: PipelineItemConfigPrompt | string;
     functionName?:  string;
     functions?:     ChatCompletionFunctions[];
-    configuration?: Partial<Omit<CreateChatCompletionRequest, 'messages' | 'stream'>>;    
+    configuration?: Partial<Omit<CreateChatCompletionRequest, 'messages' | 'stream'>>;
+    autoConfirm?:   boolean;
 }
 
 type PipelineItemRequestInput = Omit<PipelineItemRequestConfig, 'messages' | 'systemMessage' | 'id'> & {

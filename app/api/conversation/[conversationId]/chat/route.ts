@@ -105,12 +105,7 @@ class Route {
             emitter.process(async () => {
                 await Promise.all([
                     (async () => {  
-                        const chatItem = pipeline.getItemByRequestAlias('chat');
-                        if (!chatItem) return;
-                        if (await chatItem.isDone(redisClient)) {
-                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, message: await chatItem.getContent(redisClient) })));
-                            return;
-                        }
+                        const chatItem = pipeline.getItemByRequestAlias('chat')!;
     
                         for await (const { content } of chatItem.watchStream({
                             consumerGroupId: requestId, 
@@ -123,25 +118,7 @@ class Route {
                     })(),
                     (async () => {
                         const chatItem = pipeline.getItemByRequestAlias('chat')!;
-                        const finalize = async () => {
-                            await conversations.updateOne({ 
-                                _id: conversationId, 
-                                messages: {
-                                    $elemMatch: { 
-                                        id: responseMessage.id,
-                                    } 
-                                } 
-                            }, {
-                                $set: {
-                                    'messages.$.content': await chatItem.getContent(redisClient)
-                                }
-                            });
-    
-                            await chatItem.endOtherStreamWatchers();
-                        };
-
                         if (await chatItem.isDone(redisClient)) {
-                            await finalize();
                             return;
                         }
     
@@ -151,7 +128,69 @@ class Route {
                             timeout:         API_TIMEOUT,
                             events:          [PIPELINE_ITEM_EVENT_END]
                         })) {
-                            await finalize();
+                            const chatContent = await chatItem.getContent(redisClient);
+   
+                            await conversations.updateOne({ 
+                                _id: conversationId, 
+                                messages: {
+                                    $elemMatch: { 
+                                        id: responseMessage.id,
+                                    } 
+                                } 
+                            }, {
+                                $set: {
+                                    'messages.$.content': chatContent
+                                }
+                            });
+
+                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, content: chatContent })));
+
+                            await chatItem.endOtherStreamWatchers();
+                            await chatItem.confirmCompleted(redisClient);
+                        }
+                    })(),
+                    (async () => {
+                        const intentDetectionItem = pipeline.getItemByRequestAlias('intentDetection');
+                        if (!intentDetectionItem || await intentDetectionItem.isDone(redisClient)) {
+                            return;
+                        }
+    
+                        for await (const {} of intentDetectionItem.watchStream({
+                            consumerGroupId: 'intentDetection', 
+                            consumerId:      requestId, 
+                            timeout:         API_TIMEOUT,
+                            events:          [PIPELINE_ITEM_EVENT_END]
+                        })) {
+                            const events : { name: string; description: string }[] = [];
+
+                            let results : { intents: Intent[] };
+                            try {
+                                results = JSON.parse(await intentDetectionItem.getContent(redisClient));
+                            } catch {
+                                results = { intents: [] };
+                            }
+
+                            for await (const intent of processIntentDetectionResults(results)) {
+                                events.push(...await processChatIntents(mongoClient, conversationId, intent));
+                            }
+
+                            if (events.length) {
+                                await conversations.updateOne({ _id: conversationId }, { 
+                                    $push: {
+                                        events: { 
+                                            $each: events.map(({ description }) => ({
+                                                after: messages[messages.length - 1].id,
+                                                description: `EVENT LOG: ${description}`,
+                                                id: uuid()
+                                            }))
+                                        }
+                                    }
+                                });
+                                emitter.push(encodeEvent(JSON.stringify({ events })));
+                            }
+
+                            await intentDetectionItem.endOtherStreamWatchers();
+                            await intentDetectionItem.confirmCompleted(redisClient);
                         }
                     })(),
                     (async () => {
@@ -159,7 +198,6 @@ class Route {
                         const chatItem = pipeline.getItemByRequestAlias('chat')!;
 
                         const finalize = async () => {
-                            const chatContent = await chatItem.getContent(redisClient);
                             await conversations.updateOne({ 
                                 _id: conversationId, 
                                 messages: {
@@ -169,57 +207,22 @@ class Route {
                                 }  
                             }, { 
                                 $set: {
-                                    'messages.$.content': chatContent,
                                     'messages.$.pending': false
                                 } 
                             });
                             
+                            
+                            await endItem.endOtherStreamWatchers();
                             await chatItem.endOtherStreamWatchers();
 
-                            const intentDetectionItem = pipeline.getItemByRequestAlias('intentDetection');
-                            if (intentDetectionItem) {
-                                await intentDetectionItem.endOtherStreamWatchers();
-                                const events : { name: string; description: string }[] = [];
-    
-                                let results : { intents: Intent[] };
-                                try {
-                                    results = JSON.parse(await intentDetectionItem.getContent(redisClient));
-                                } catch {
-                                    results = { intents: [] };
-                                }
-
-                                for await (const intent of processIntentDetectionResults(results)) {
-                                    events.push(...await processChatIntents(mongoClient, conversationId, intent));
-                                }
-    
-                                if (events.length) {
-                                    await conversations.updateOne({ _id: conversationId }, { 
-                                        $push: {
-                                            events: { 
-                                                $each: events.map(({ description }) => ({
-                                                    after: messages[messages.length - 1].id,
-                                                    description: `EVENT LOG: ${description}`,
-                                                    id: uuid()
-                                                }))
-                                            }
-                                        }
-                                    });
-                                    emitter.push(encodeEvent(JSON.stringify({ events })));
-                                }
-                            }
-
-                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, message: chatContent })));
+                            emitter.push(encodeEvent(JSON.stringify({ delta: false, messageId: responseMessage.id, message: await chatItem.getContent(redisClient) })));
                             emitter.push(encodeEvent(JSON.stringify({ done: true })));
-                            await endItem.endOtherStreamWatchers();
+
+                            await pipeline.destroy(redisClient);
                         };
 
-                        if (await endItem.isDone(redisClient) && await chatItem.isDone(redisClient)) {
-                            await finalize();
-                            return;
-                        }
-                        
                         for await (const {} of endItem.watchStream({
-                            consumerGroupId: 'end', 
+                            consumerGroupId: 'end',
                             consumerId:      requestId, 
                             timeout:         API_TIMEOUT,
                             events:          [PIPELINE_ITEM_EVENT_END]

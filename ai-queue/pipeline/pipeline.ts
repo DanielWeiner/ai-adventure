@@ -112,7 +112,7 @@ export class Pipeline {
     getItemByRequestAlias(requestAlias: string) {
         for (const [itemId, item] of Object.entries(this.#config.items)) {
             if (item.request.alias === requestAlias) {
-                return new PipelineItem(itemId, this.getId(), item);
+                return new PipelineItem(itemId, this, item);
             }
         }
 
@@ -120,7 +120,7 @@ export class Pipeline {
     }
 
     getItem(itemId: string) : PipelineItem | null {
-        return this.#config.items[itemId] ? new PipelineItem(itemId, this.getId(), this.#config.items[itemId]) : null;
+        return this.#config.items[itemId] ? new PipelineItem(itemId, this, this.#config.items[itemId]) : null;
     }
 
     getItems() {

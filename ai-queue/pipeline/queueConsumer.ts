@@ -1,6 +1,5 @@
 import { RedisClientType, commandOptions } from "redis";
 import { v4 as uuid } from 'uuid';
-import { createRedisClient } from "./redisClient";
 import EventEmitter from "events";
 
 const DEFAULT_CHUNK_SIZE = 10;
@@ -47,37 +46,37 @@ export default class QueueConsumer {
     }
 
     async *watch() : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
-        await this.#redisClient
-            .multi()
-                .xGroupCreate(this.#key, TEMP_GROUP, '0', { MKSTREAM: true })
-                .xGroupDestroy(this.#key, TEMP_GROUP)
-            .exec();
-
-        const onAbort = async () => {
+        const onAbort = () => {
             const oldClient = this.#redisClient;
-            oldClient.on('error', () => {});
-            const newClient = this.#redisClient.duplicate();
-            oldClient.disconnect().catch(() => {});
+            const newClient = oldClient.duplicate();
             newClient.connect();
             this.#redisClient = newClient;
+            oldClient.on('error', () => {});
+            oldClient.disconnect().catch(() => {});
         };
         
-
         mainLoop:
         while (!this.#done) {
+            let items : ReadResults;
+            let aborted : boolean = false;
+
             this.#abortEmitter.on('abort', onAbort);
-            let items : ReadResults | false = await this.#ensureGroupExists().then(() => this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
-                key: this.#key,
-                id: '>',
-            }, {
-                COUNT: this.#chunkSize,
-                BLOCK: this.#pollTime
-            })).catch(() => {
-                return false;
-            });
+            try {
+                await this.#ensureGroupExists();
+                items = await this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
+                    key: this.#key,
+                    id: '>',
+                }, {
+                    COUNT: this.#chunkSize,
+                    BLOCK: this.#pollTime
+                });
+            } catch {
+                aborted = true;
+                items = null;
+            }
             this.#abortEmitter.off('abort', onAbort);
 
-            if (items === false || this.#done) {
+            if (aborted || this.#done) {
                 break;
             } 
 
@@ -101,13 +100,21 @@ export default class QueueConsumer {
     }
 
     async #ensureGroupExists() {
+        await this.#redisClient
+            .multi()
+                .xGroupCreate(this.#key, TEMP_GROUP, '0', { MKSTREAM: true })
+                .xGroupDestroy(this.#key, TEMP_GROUP)
+            .exec();
+
         const groups = await this.#redisClient.xInfoGroups(this.#key);
         if (!groups.some(({ name }) => this.#consumerGroupId === name)) {
             await this.#redisClient.xGroupCreate(this.#key, this.#consumerGroupId, this.#startMessageId);
         }
     }
     async destroy() {
-        await this.#redisClient.xGroupDelConsumer(this.#key, this.#consumerGroupId, this.#id);
+        try {
+            await this.#redisClient.xGroupDelConsumer(this.#key, this.#consumerGroupId, this.#id);
+        } catch {}
     }
 
     async ack(messageId: string) {

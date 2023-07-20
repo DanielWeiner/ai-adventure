@@ -22,7 +22,8 @@ class RequestsWatcher {
             this.#resolveWatchPromise = resolve;
         });
 
-        for await (const { id, message: { pipelineId, itemId, request } } of this.#queueConsumer.watch()) {            
+        for await (const { id, message: { pipelineId, itemId, request } } of this.#queueConsumer.watch()) {
+            // TODO: better retry logic        
             this.#requestResolver.resolveRequest(id, pipelineId, itemId, JSON.parse(request));
         }
 

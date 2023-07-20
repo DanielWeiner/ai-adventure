@@ -6,7 +6,8 @@ const CreateContext = React.createContext<CreationPageState>({
     noun: null,
     nouns: [],
     nounType: "",
-    sessionToken: ''
+    sessionToken: '',
+    awaitingNewNoun: false
 });
 
 export default CreateContext;

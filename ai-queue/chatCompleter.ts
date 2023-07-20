@@ -115,7 +115,7 @@ export default class ChatCompleter {
                 }
 
                 const eventJSON : ChatCompletionStreamResponse = JSON.parse(event);
-                yield { content: eventJSON.choices[0].delta.content || '', done: !!eventJSON.choices[0].finish_reason };
+                yield { content: eventJSON.choices?.[0].delta.content || '', done: !!eventJSON.choices?.[0].finish_reason };
             }
         }
     }

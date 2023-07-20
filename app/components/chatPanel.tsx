@@ -5,7 +5,7 @@ import ChatBox from "@/app/components/chatbox";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import React, { Fragment, useRef, useState } from "react";
+import React, { Fragment, useEffect, useRef, useState } from "react";
 import { useCreationContext } from "../create/context";
 import { CharacterIcon, ClassIcon, FactionIcon, LeftChevronIcon, LocationIcon, PlusIcon, SpeciesIcon, TrashIcon, WorldIcon } from "@/app/components/icons";
 import { Combobox, Transition } from "@headlessui/react";
@@ -39,7 +39,7 @@ const icons : { [key in NounType]: (size: string) => React.ReactNode } = {
 export default function ChatPanel() {
     const router = useRouter();
     const queryClient = useQueryClient();
-    const { sessionToken, nounType, nouns: initialNouns, noun: initialNoun } = useCreationContext();
+    const { sessionToken, nounType, nouns: initialNouns, noun: initialNoun, awaitingNewNoun } = useCreationContext();
 
     const [nounQuery, setNounQuery] = useState('');
     const [detailsShown, setDetailsShown] = useState(false);
@@ -66,15 +66,15 @@ export default function ChatPanel() {
             `noun_${sessionToken}_${nounType}`,
             `noun_${sessionToken}_${nounType}_${nounId}`
         ],
-        queryFn: () => nounId ? getNoun(nounType, nounId) : null,
+        queryFn: () => (nounId && !awaitingNewNoun) ? getNoun(nounType, nounId) : null,
         initialData: initialNoun
     });
 
-    const createNounMutation = useMutation({
+    const { mutate: createNewNoun } = useMutation({
         mutationFn: createNoun,
         onSuccess: ({ _id: id }) => {
+            router.replace(`/create/${nounType}/${id}`);
             queryClient.invalidateQueries([ `noun_${sessionToken}_${nounType}` ]);
-            router.push(`/create/${nounType}/${id}`);
         }
     });
 
@@ -89,11 +89,16 @@ export default function ChatPanel() {
         }
     });
 
+    useEffect(() => {
+        if (awaitingNewNoun) {
+            createNewNoun(nounType);
+        }
+    }, [ awaitingNewNoun, nounType, createNewNoun ]);
+
     const filteredNouns = nouns.filter(({name}) => name.toLowerCase().includes(nounQuery.toLowerCase()));
 
     return (
         <div 
-            key={noun?._id}
             {...swipeableHandlers}
             className={
                 `flex flex-row flex-grow w-screen max-lg:w-[calc(200vw-1rem)] h-full lg:border-l-2 border-l-slate-500 transition-[margin-left] duration-150 ${
@@ -197,16 +202,15 @@ export default function ChatPanel() {
                         </Combobox> : null }
                         <Link className="align-middle" href="#" onClick={(e) => {
                             e.preventDefault();
-                            createNounMutation.mutate(nounType)
+                            router.push(`/create/${nounType}/new`);
                         }}>
                             <PlusIcon size="2rem" className="text-green-600 rounded-full shadow-md mt-1 bg-white" />
                         </Link>
                     </div>
                     <div className="flex-grow relative">
                         {
-                            noun ? 
-                                <ChatBox conversationId={noun.conversationId} /> 
-                                : 
+                            (noun || awaitingNewNoun) ? 
+                                <ChatBox conversationId={noun?.conversationId ?? null} /> : 
                                 <div className="flex flex-col justify-center items-center w-full max-h-full h-full bg-slate-200">
                                     <p className="text-center">
                                         Select a {nounType} from the dropdown, or click the &quot;+&quot; icon above to create a new one.
@@ -223,28 +227,28 @@ export default function ChatPanel() {
                 <LeftChevronIcon className={`transition-transform duration-150 ${detailsShown ? 'max-lg:[transform:rotateZ(180deg)]' : ''}`} size="100%"/>
             </div>
             <section className="lg:w-4/12 max-lg:w-[calc(100vw-1rem)] bg-slate-100">
-                {noun ? <div>
-                    <p className="text-center font-bold text-xl py-2">{noun.name || <span className="text-slate-600 italic font-medium">unnamed {nounType}</span>}</p>
+                <div>
+                    <p className="text-center font-bold text-xl py-2">{noun?.name || <span className="text-slate-600 italic font-medium">unnamed {nounType}</span>}</p>
                     <div className="flex justify-center w-full mt-5">{icons[nounType as NounType]('100') }</div>
                     <p className="text-center font-medium text-lg pb-5">{ucFirst(nounType)}</p>
 
                     <dl className="grid grid-cols-[max-content,_minmax(0,_1fr)] px-1 py-2">
-                        {
-                            Object.entries(noun.properties).map(([key, value]) => (
-                                <Fragment key={key}>
-                                    <dt className="mt-1 px-1 text-sm font-medium text-gray-900">{key}</dt>
-                                    <dd className="mt-1 px-1 text-sm text-gray-700">{value}</dd>
-                                </Fragment>
-                            ))
+                        {   noun ? 
+                                Object.entries(noun.properties).map(([key, value]) => (
+                                    <Fragment key={key}>
+                                        <dt className="mt-1 px-1 text-sm font-medium text-gray-900">{key}</dt>
+                                        <dd className="mt-1 px-1 text-sm text-gray-700">{value}</dd>
+                                    </Fragment>
+                                )) : null
                         }
                     </dl>
 
                     <ul className="list-disc ml-6 text-sm">
                         {
-                            noun.traits?.map((trait, i) => <li key={i}>{trait}</li>)
+                            noun?.traits?.map((trait, i) => <li key={i}>{trait}</li>)
                         }
                     </ul>
-                </div>: null}
+                </div>
             </section>
         </div>
     );

@@ -6,7 +6,6 @@ import { PipelineItem } from "./pipelineItem";
 import { Logger } from "winston";
 import { Pipeline } from "./pipeline";
 import { 
-    PIPELINE_ITEMS_QUEUE, 
     PIPELINE_ITEM_EVENT_BEGIN, 
     PIPELINE_ITEM_EVENT_END,
     PIPELINE_ITEM_EVENT_CONTENT, 
@@ -27,6 +26,7 @@ export class RequestResolver {
     }
 
     async resolveRequest(messageId: string, pipelineId: string, itemId: string, request: PipelineItemRequestConfig) {
+        const autoConfirm = request.autoConfirm ?? true;
         const replacements = typeof request.systemMessage === 'object' && request.systemMessage ? [...request.systemMessage?.replacements || []] : [];
         for (const message of request.messages) {
             if ('replacements' in message) {
@@ -85,67 +85,56 @@ export class RequestResolver {
     
         await this.#redisClient.xAdd(item.calculateStreamKey(), '*', { content: '', event: PIPELINE_ITEM_EVENT_BEGIN })
         if (request.kind === 'stream') {
-            for await (const { content } of completer.generateChatCompletionDeltas(request.messages.map(toPrompt))) {
+            try {
+                for await (const { content } of completer.generateChatCompletionDeltas(request.messages.map(toPrompt))) {
+                    await this.#redisClient
+                        .multi()
+                            .append(item.calculateContentKey(), content)
+                            .xAdd(item.calculateStreamKey(), '*', { content, event: PIPELINE_ITEM_EVENT_CONTENT })
+                        .exec();
+                }
+                await this.#finishRequest(messageId, item, autoConfirm);
+            } catch (e:any) {
+                this.#logger.warn(`error while executing request: ${e.stack}`);
+            }
+        } else if (request.kind === 'function') {
+            try {
+                const content = JSON.stringify(await completer.createFunctionCallCompletion(request.messages.map(toPrompt), request.functionName));
                 await this.#redisClient
                     .multi()
                         .append(item.calculateContentKey(), content)
                         .xAdd(item.calculateStreamKey(), '*', { content, event: PIPELINE_ITEM_EVENT_CONTENT })
                     .exec();
+                await this.#finishRequest(messageId, item, autoConfirm);
+            } catch(e: any) {
+                this.#logger.warn(`error while executing request: ${e.stack}`);
+
             }
-            await this.#finishRequest(messageId, pipeline, item);
-        } else if (request.kind === 'function') {
-            const content = JSON.stringify(await completer.createFunctionCallCompletion(request.messages.map(toPrompt), request.functionName));
-            await this.#redisClient
-                .multi()
-                    .append(item.calculateContentKey(), content)
-                    .xAdd(item.calculateStreamKey(), '*', { content, event: PIPELINE_ITEM_EVENT_CONTENT })
-                .exec();
-            await this.#finishRequest(messageId, pipeline, item);
         } else {
-            const content = await completer.createChatCompletion(request.messages.map(toPrompt));
-            await this.#redisClient
-                .multi()
-                    .append(item.calculateContentKey(), content)
-                    .xAdd(item.calculateStreamKey(), '*', { content, event: PIPELINE_ITEM_EVENT_CONTENT })
-                .exec();
-            await this.#finishRequest(messageId, pipeline, item);
+            try {
+                const content = await completer.createChatCompletion(request.messages.map(toPrompt));
+                await this.#redisClient
+                    .multi()
+                        .append(item.calculateContentKey(), content)
+                        .xAdd(item.calculateStreamKey(), '*', { content, event: PIPELINE_ITEM_EVENT_CONTENT })
+                    .exec();
+                await this.#finishRequest(messageId, item, autoConfirm);
+            } catch (e: any) {
+                this.#logger.warn(`error while executing request: ${e.stack}`);
+            }
         }
     }
 
-    async #finishRequest(messageId: string, pipeline: Pipeline, item: PipelineItem) {
-       
-        this.#logger.info(`request ${item.getAlias()} of pipeline ${item.getPipelineId()} finished with content: ${await item.getContent()}`)
-        
+    async #finishRequest(messageId: string, item: PipelineItem, autoConfirm: boolean) {
+        this.#logger.info(`request ${item.getAlias()} of pipeline ${item.getPipelineId()} finished with content: ${JSON.stringify(await item.getContent())}`)
+
         await this.#redisClient.multi()
-                .set(item.calculateDoneKey(), '1')
-                .xAdd(item.calculateStreamKey(), '*', { content: '', event: PIPELINE_ITEM_EVENT_END })
-                .publish(item.calculateDoneChannel(), '1')
-            .exec();
+            .xAdd(item.calculateStreamKey(), '*', { content: '', event: PIPELINE_ITEM_EVENT_END })
+            .xAck(PIPELINE_REQUESTS_QUEUE, PIPELINE_REQUESTS_CONSUMER_GROUP, messageId)
+        .exec();
 
-        const nextItems = item.getNextIds().map(id => pipeline.getItem(id)!);
-
-        if (nextItems.length) {
-            const multi = this.#redisClient.multi();
-            for (const item of nextItems) {
-                multi.decr(item.calculatePrevIdsKey());
-            }
-
-            const results = await multi.exec() as number[];
-            const requestsToTrigger = nextItems.filter((_, i) => !results[i]);
-            
-            if (requestsToTrigger.length) {
-                const multi = this.#redisClient.multi();
-                await new Promise(resolve => setTimeout(resolve, 10));
-                for (const item of requestsToTrigger) {
-                    multi.xAdd(PIPELINE_ITEMS_QUEUE, '*', {
-                        pipelineId: item.getPipelineId(),
-                        itemId:     item.getId()
-                    });
-                }
-                await multi.exec();
-            }
+        if (autoConfirm) {
+            await item.confirmCompleted(this.#redisClient);
         }
-
-        await this.#redisClient.xAck(PIPELINE_REQUESTS_QUEUE, PIPELINE_REQUESTS_CONSUMER_GROUP, messageId);
     }
 }

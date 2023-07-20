@@ -205,28 +205,13 @@ export async function startAssistantPrompt(mongoClient: MongoClient, conversatio
             `,
             messages: [
                 ...openaiMessages.slice(-16)
-            ]
+            ],
+            autoConfirm: false
         }
     };
     
     if (!intentDetection) {
-        return Pipeline.fromItems({
-            request: {
-                alias: 'chat',
-                kind: 'stream',
-                systemMessage: systemPrompt`
-                    ${systemPrompts[purpose.type](purpose.context, openaiMessages.length === 0)}
-                    ${openaiMessages.length > 0 ? `
-                        Current known information about the ${purpose.context}:
-                        ${relevantInfoString}
-                        Do not echo this to the user.
-                    ` : ''}
-                `,
-                messages: [
-                    ...openaiMessages.slice(-16)
-                ]
-            }
-        }, responseMessage.aiPipelineId).saveToQueue();
+        return Pipeline.fromItems(chatPipelineItem, responseMessage.aiPipelineId).saveToQueue();
     }
 
     return Pipeline.fromItems({
@@ -269,7 +254,8 @@ function createIntentDetectionPrompt(relevantInfo: RelevantInformation) : Pipeli
             `,
             messages: [
                 userPrompt`${prevResult(new RegExp(`^(?:(?:.|[\\r\\n])*(?=${splitSentencePrefix})${splitSentencePrefix})?((?:.|[\\r\\n])*)$`), 1)}`
-            ]
+            ],
+            autoConfirm: false
         }
     }
 }
