@@ -7,11 +7,14 @@ import { NextRequest, NextResponse } from "next/server";
 class Route {
     @authorize
     @mongo
-    async GET(request: NextRequest, { params: { conversationId, session, mongoClient } } : { params: { conversationId: string, session: Session, mongoClient: MongoClient}}) {
+    async GET(request: NextRequest, { params: { conversationId, session, mongoClient } } : { params: { conversationId: string, session: Session, mongoClient: MongoClient }}) {
         const nouns = getNounCollection(mongoClient);
         const noun = await nouns.findOne({ conversationId, userId: session.user.id });
-
-        return NextResponse.json(noun);
+        if (!noun) {
+            return NextResponse.json('Not Found', { status: 404 });
+        }
+        const { _id, name, traits, properties, revision = 0 } = noun;
+        return NextResponse.json({ _id, name, traits, properties, revision });
     }
 }
 export const { GET } = new Route();

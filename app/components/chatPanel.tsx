@@ -58,7 +58,8 @@ export default function ChatPanel() {
     const { data: nouns } = useQuery({ 
         queryKey: [`noun_${sessionToken}_${nounType}`],
         queryFn: () => getNouns(nounType),
-        initialData: initialNouns
+        initialData: initialNouns,
+        refetchOnWindowFocus: false
     });
 
     const { data: noun } = useQuery({
@@ -67,7 +68,8 @@ export default function ChatPanel() {
             `noun_${sessionToken}_${nounType}_${nounId}`
         ],
         queryFn: () => (nounId && !awaitingNewNoun) ? getNoun(nounType, nounId) : null,
-        initialData: initialNoun
+        initialData: initialNoun,
+        refetchOnWindowFocus: false
     });
 
     const { mutate: createNewNoun } = useMutation({
@@ -75,7 +77,7 @@ export default function ChatPanel() {
         onSuccess: ({ _id: id }) => {
             router.replace(`/create/${nounType}/${id}`);
             queryClient.invalidateQueries([ `noun_${sessionToken}_${nounType}` ]);
-        }
+        },
     });
 
     const deleteNounMutation = useMutation({

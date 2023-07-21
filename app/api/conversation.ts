@@ -3,7 +3,7 @@ import { Collection, MongoClient } from "mongodb";
 import { ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum } from "openai";
 import { apiUrl } from "./api";
 import { cookies } from "next/headers";
-import { NounType, getConversationNoun } from "./noun";
+import { NounType, getConversationNoun, getConversationNounRevision } from "./noun";
 import { assistantPrompt, prevResult, systemPrompt, userPrompt } from "../../ai-queue/pipeline/prompt";
 import { v4 as uuid } from 'uuid';
 import { Intent } from "../lib/intent";
@@ -17,6 +17,7 @@ export interface Message {
     role:         ChatCompletionRequestMessageRoleEnum;
     aiPipelineId: string;
     pending:      boolean;
+    revision:     number;
 }
 
 export type ConversationPurposeType = 'create' | 'adventure';
@@ -44,6 +45,7 @@ export interface Conversation {
         description: string;
         id: string;
     }[];
+    revision: number;
 }
 
 const splitSentencePrefix = 'SECOND STAGE';
@@ -78,11 +80,11 @@ const systemPrompts : ContextPrompts = {
     adventure: () => ''
 };
 
-export async function findRelevantInformation<T extends ConversationPurposeType>(conversationId: string, conversationType: T, context: ConversationContext[T]) : Promise<RelevantInformation> {
+export async function findRelevantInformation<T extends ConversationPurposeType>(conversationId: string, conversationType: T, context: ConversationContext[T], revision: number) : Promise<RelevantInformation> {
     if (conversationType === 'adventure') {
         return { name: '', properties: {}, traits: [], type: '' };
     }
-    const noun = await getConversationNoun(conversationId);
+    const noun = await getConversationNounRevision(conversationId, revision);
 
     if (!noun) {
         return { name: '', properties: {}, traits: [], type: '' };
@@ -171,14 +173,15 @@ export async function getMessages(conversationId: string) {
     return response.json();
 }
 
-export async function startAssistantPrompt(mongoClient: MongoClient, conversationId: string, intentDetection: boolean, relevantInfo: RelevantInformation) {
+export async function startAssistantPrompt(mongoClient: MongoClient, conversationId: string, intentDetection: boolean, relevantInfo: RelevantInformation, pipelineId: string, revision: number) {
     const conversations = getConversationCollection(mongoClient);
     const responseMessage : Message = {
         role:         'assistant',
         content:      '',
         id:           uuid(),
-        aiPipelineId: uuid(),
-        pending:      true
+        aiPipelineId: pipelineId,
+        pending:      true,
+        revision
     };
 
     const conversation = await conversations.findOne({ _id: conversationId });
@@ -211,7 +214,7 @@ export async function startAssistantPrompt(mongoClient: MongoClient, conversatio
     };
     
     if (!intentDetection) {
-        return Pipeline.fromItems(chatPipelineItem, responseMessage.aiPipelineId).saveToQueue();
+        return Pipeline.fromItems(chatPipelineItem, pipelineId).saveToQueue();
     }
 
     return Pipeline.fromItems({

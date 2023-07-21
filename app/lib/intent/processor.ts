@@ -1,38 +1,103 @@
-import { getNounCollection } from "@/app/api/noun";
+import { NounRevision, calculateRevisionProjection, getNounCollection } from "@/app/api/noun";
 import { MongoClient } from "mongodb";
 import { Intent, SetPropertiesIntent, ReplaceTraitsIntent } from ".";
+import { getConversationCollection } from "@/app/api/conversation";
 
-export async function processChatIntents(mongoClient: MongoClient, conversationId: string, intent: Intent) {
-    if (intent.intentName === 'setName') {
-        return setName(mongoClient, conversationId, intent.value.name);
+export async function* processChatIntents(mongoClient: MongoClient, conversationId: string, intents: Intent[], startRevision: number, endRevision: number) {
+    await resetNounRevision(mongoClient, conversationId, startRevision);
+
+    for (const intent of intents) {
+        if (intent.intentName === 'setName') {
+            yield* await setName(mongoClient, conversationId, intent.value.name);
+        } else if (intent.intentName === 'addTraits') {
+            yield* await addTraits(mongoClient, conversationId, intent.value.traits);
+        } else if (intent.intentName === 'setProperties') {
+            yield* await setProperties(mongoClient, conversationId, intent.value.properties);
+        } else if (intent.intentName === 'replaceTraits') {
+            yield* await replaceTraits(mongoClient, conversationId, intent.value.traitReplacements);
+        } else if (intent.intentName === 'removeTraits') {
+            yield* await removeTraits(mongoClient, conversationId, intent.value.traitIndices);
+        } else if (intent.intentName === 'removeProperties') {
+            yield* await removeProperties(mongoClient, conversationId, intent.value.propertyNames);
+        }
     }
 
-    if (intent.intentName === 'addTraits') {
-        return addTraits(mongoClient, conversationId, intent.value.traits);
+    await updateConversationRevision(mongoClient, conversationId, endRevision);
+    await updateNounRevision(mongoClient, conversationId, endRevision);
+}
+
+async function resetNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
+    const nouns = getNounCollection(mongoClient);
+    const noun = (await nouns.findOne({ conversationId }, {
+        projection: {
+            ...calculateRevisionProjection(revision),
+            revisions: {
+                $ifNull: [
+                    {
+                        $filter: {
+                            input: '$revisions',
+                            as:    'revision',
+                            cond: {
+                                $lte: ['$$revision.revision', revision]
+                            }
+                        }
+                    },
+                    []
+                ]
+            }
+        }
+    }))!;
+
+    await nouns.updateOne({ _id: noun._id }, {
+        $set: {
+            properties: noun.properties,
+            traits:     noun.traits,
+            revisions:  noun.revisions,
+            revision:   revision
+        }
+    });
+}
+
+async function updateConversationRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
+    const conversations = getConversationCollection(mongoClient);
+    await conversations.updateOne({ _id: conversationId }, {
+        $set: {
+            revision
+        }
+    });
+}
+
+async function getNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) : Promise<NounRevision | null> {
+    const nouns = getNounCollection(mongoClient);
+    const noun = await nouns.findOne({ conversationId }, calculateRevisionProjection(revision));
+    return noun;
+}
+
+async function updateNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
+    const nouns = getNounCollection(mongoClient);
+    const { _id, name = '', properties = {}, traits = [] } = await nouns.findOne({ conversationId }) ?? {};
+
+    if (!_id) {
+        return;
     }
 
-    if (intent.intentName === 'setProperties') {
-        return setProperties(mongoClient, conversationId, intent.value.properties);
-    }
-
-    if (intent.intentName === 'replaceTraits') {
-        return replaceTraits(mongoClient, conversationId, intent.value.traitReplacements);
-    }
-
-    if (intent.intentName === 'removeTraits') {
-        return removeTraits(mongoClient, conversationId, intent.value.traitIndices);
-    }
-
-    if (intent.intentName === 'removeProperties') {
-        return removeProperties(mongoClient, conversationId, intent.value.propertyNames);
-    }
-
-    return [];
+    await nouns.updateOne({ _id },{
+        $set: {
+            revision
+        },
+        $push: {
+            revisions: {
+                name,
+                properties,
+                traits,
+                revision
+            }
+        }
+    });
 }
 
 async function setName(mongoClient: MongoClient, conversationId: string, name: string) {
     const nouns = getNounCollection(mongoClient);
-
     const noun = await nouns.findOne({ conversationId });
 
     if (!noun) {
@@ -49,8 +114,8 @@ async function setName(mongoClient: MongoClient, conversationId: string, name: s
 
 async function addTraits(mongoClient: MongoClient, conversationId: string, traits: string[]) {
     const nouns = getNounCollection(mongoClient);
-
     const noun = await nouns.findOne({ conversationId });
+
     if (!noun) {
         return [];
     }
@@ -65,7 +130,6 @@ async function addTraits(mongoClient: MongoClient, conversationId: string, trait
 
 async function setProperties(mongoClient: MongoClient, conversationId: string, properties: SetPropertiesIntent['value']['properties']) {
     const nouns = getNounCollection(mongoClient);
-    
     const noun = await nouns.findOne({ conversationId });
     if (!noun) {
         return [];
@@ -98,8 +162,8 @@ async function setProperties(mongoClient: MongoClient, conversationId: string, p
 
 async function replaceTraits(mongoClient: MongoClient, conversationId: string, traitReplacements: ReplaceTraitsIntent['value']['traitReplacements']) {
     const nouns = getNounCollection(mongoClient);
-    
     const noun = await nouns.findOne({ conversationId });
+
     if (!noun) {
         return [];
     }
@@ -127,8 +191,8 @@ async function replaceTraits(mongoClient: MongoClient, conversationId: string, t
 
 async function removeProperties(mongoClient: MongoClient, conversationId: string, properties: string[]) {
     const nouns = getNounCollection(mongoClient);
-    
     const noun = await nouns.findOne({ conversationId });
+
     if (!noun) {
         return [];
     }
@@ -156,8 +220,8 @@ async function removeProperties(mongoClient: MongoClient, conversationId: string
 
 async function removeTraits(mongoClient: MongoClient, conversationId: string, indices: number[]) {
     const nouns = getNounCollection(mongoClient);
-
     const noun = await nouns.findOne({ conversationId });
+
     if (!noun) {
         return [];
     }

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCreationContext } from "../create/context";
 import { SendIcon } from "./icons";
 import { v4 as uuid } from 'uuid';
+import { Noun } from "../api/noun";
 
 const fetchJson = async <T,>(url: string, options?: RequestInit) : Promise<T> => (await fetch(`/api/${url}`, options)).json();
 const getMessages = (conversationId: string) => fetchJson<Message[]>(`/conversation/${conversationId}/message`);
@@ -29,14 +30,25 @@ export default function ChatBox({ conversationId } : {
 }) {
     const [ text, setText ] = useState("");
     const [ eventSource, setEventSource ] = useState<EventSource | null>(null);
-    const { sessionToken, messages: remoteChatLog, nounType, noun, awaitingNewNoun } = useCreationContext();
+    const { sessionToken, messages: remoteChatLog, nounType, noun: contextNoun, awaitingNewNoun } = useCreationContext();
     const [ eventSourceHandler, setEventSourceHandler ] = useState<((event: MessageEvent) => void) | null>(null);
     const [ endingEventSource, setEndingEventSource ] = useState(false);
-
+    const queryClient = useQueryClient();
+    const { _id: nounId } = contextNoun || {};
     const conversationQueryKey = `conversation_${sessionToken}_${conversationId ?? 'new' }`;
     const nounsQueryKey = `noun_${sessionToken}_${nounType}`;
-    const currentNounQueryKey = `noun_${sessionToken}_${nounType}_${noun?._id ?? 'new' }`;
+    const currentNounQueryKey = `noun_${sessionToken}_${nounType}_${nounId ?? 'new' }`;
 
+    const { fetchStatus: nounFetchStatus } = queryClient.getQueryState([
+        nounsQueryKey,
+        currentNounQueryKey
+    ]) ?? {};
+    
+    const noun : Noun | undefined = queryClient.getQueryData([
+        nounsQueryKey,
+        currentNounQueryKey
+    ]);
+    
     const { data: messages, isFetched: messagesFetched, fetchStatus } = useQuery({
         queryKey: [conversationQueryKey],
         queryFn: () => conversationId ? getMessages(conversationId) : [],
@@ -46,8 +58,9 @@ export default function ChatBox({ conversationId } : {
     const lastMessage = messages.findLast(message => message.role === 'assistant') ?? { pending: true, content: ''};
     const pendingChat = lastMessage.pending;
     const loadingBubble = pendingChat && !lastMessage.content;
+    const nounFetching = nounFetchStatus === 'fetching';
+    const chatEnabled = !pendingChat && !nounFetching;
 
-    const queryClient = useQueryClient();
     const postMessageMutation = useMutation({
         mutationFn: postMessage,
         onSuccess: () => {
@@ -60,7 +73,8 @@ export default function ChatBox({ conversationId } : {
                     content: message,
                     id: 'new',
                     pending: false,
-                    role: 'user'
+                    role: 'user',
+                    revision: noun?.revision || 0
                 }
             ]))
             setText('');
@@ -93,18 +107,17 @@ export default function ChatBox({ conversationId } : {
             setEventSource(null);
         }
         setEndingEventSource(false);
-    }, [ endingEventSource, conversationQueryKey, eventSource, setEndingEventSource, eventSourceHandler, eventSourceHandler, queryClient ]);
+    }, [ endingEventSource, conversationQueryKey, eventSource, setEndingEventSource, eventSourceHandler, queryClient ]);
 
     useEffect(() => {
-        if (!messagesFetched || fetchStatus === 'fetching') return;
+        if (!messagesFetched || fetchStatus === 'fetching' || nounFetching) return;
         if (!pendingChat || endingEventSource) return;
         if (!eventSource && conversationId) {
-            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}`));
+            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}&revision=${noun?.revision}`));
         }
-    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus, endingEventSource ]);
+    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus, endingEventSource, nounFetching, noun?.revision]);
 
     useEffect(() => {
-        if (!messagesFetched || fetchStatus === 'fetching') return;
         if (!eventSource || endingEventSource) return;
 
         const onMessage = (event: MessageEvent) => {        
@@ -124,7 +137,6 @@ export default function ChatBox({ conversationId } : {
                 if (data.events) {
                     if (data.events.some(({ name } : { name: string }) => name === 'noun.update')) {
                         queryClient.invalidateQueries([nounsQueryKey]);
-                        queryClient.invalidateQueries([currentNounQueryKey]);
                     }
                     return;
                 }
@@ -143,7 +155,7 @@ export default function ChatBox({ conversationId } : {
             }
             return onMessage;
         })
-    }, [ eventSource, conversationQueryKey, nounsQueryKey, currentNounQueryKey, queryClient, messagesFetched, fetchStatus, setEventSourceHandler, endingEventSource, setEndingEventSource ])
+    }, [ eventSource, conversationQueryKey, nounsQueryKey, queryClient, setEventSourceHandler, endingEventSource, setEndingEventSource ])
 
     useEffect(() => {
         if (!eventSource || !eventSourceHandler) {
@@ -188,19 +200,19 @@ export default function ChatBox({ conversationId } : {
                 onSubmit={ 
                     (e) => {
                         e.preventDefault();
-                        if (text.trim() && !eventSource && conversationId) {
+                        if (text.trim() && !eventSource && conversationId && chatEnabled) {
                             postMessageMutation.mutate({ conversationId, message: text });
                         }
                     } 
                 }>
                     <input 
-                        disabled={pendingChat}
+                        disabled={!chatEnabled}
                         type="text"
                         className="block flex-grow min-w-0 h-12 text-md border-0 py-1.5 lg:[border-bottom-left-radius:0.375rem] text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600" 
                         value={text}
                         placeholder="Say something..."
                         onChange={ input => setText(input.target.value) }/>
-                    <button disabled={pendingChat} type="submit" className="flex bg-indigo-500 h-12 w-12 min-w-[3rem] lg:[border-bottom-right-radius:0.375rem] text-white justify-center items-center disabled:bg-indigo-300">
+                    <button disabled={!chatEnabled} type="submit" className="flex bg-indigo-500 h-12 w-12 min-w-[3rem] lg:[border-bottom-right-radius:0.375rem] text-white justify-center items-center disabled:bg-indigo-300">
                         <SendIcon size="1.5rem" className="-mb-1" />
                     </button>
             </form>

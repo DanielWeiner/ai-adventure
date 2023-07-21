@@ -20,7 +20,8 @@ class Route {
             events: [],
             userId: session.user.id,
             purpose,
-            locked: false
+            locked: false,
+            revision: 0
         };
     
         const conversations = getConversationCollection(mongoClient);

@@ -26,13 +26,14 @@ class Route {
             content:      message,
             id:           uuid(),
             aiPipelineId: '',
-            pending:      false
+            pending:      false,
+            revision:     conversation.revision
         };
 
         await conversations.updateOne({ _id: conversationId }, { $push: { messages: newMessage } });
         const { purpose } = (await conversations.findOne({ _id: conversationId }))!;
-        const relevantInfo = await findRelevantInformation(conversationId, purpose.type, purpose.context);
-        await startAssistantPrompt(mongoClient, conversationId, true, relevantInfo);
+        const relevantInfo = await findRelevantInformation(conversationId, purpose.type, purpose.context, conversation.revision);
+        await startAssistantPrompt(mongoClient, conversationId, true, relevantInfo, uuid(), conversation.revision);
         
         return NextResponse.json("ok");
     }

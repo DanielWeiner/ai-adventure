@@ -112,9 +112,9 @@ export default class QueueConsumer {
         }
     }
     async destroy() {
-        try {
+        if (await this.#redisClient.exists(this.#key)) {
             await this.#redisClient.xGroupDelConsumer(this.#key, this.#consumerGroupId, this.#id);
-        } catch {}
+        }
     }
 
     async ack(messageId: string) {

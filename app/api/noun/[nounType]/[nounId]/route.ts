@@ -17,8 +17,8 @@ class Route {
         if (!noun) {
             return NextResponse.json("Not Found", { status: 404 });
         }
-    
-        return NextResponse.json(noun);
+        const { _id, name, traits, properties, revision = 0, conversationId } = noun;
+        return NextResponse.json({ _id, name, traits, properties, revision, conversationId });
     }
 
     @authorize
@@ -63,8 +63,9 @@ class Route {
         };
     
         await nouns.replaceOne({ _id: nounId }, noun);
-    
-        return NextResponse.json(noun);
+
+        const { _id, name, traits, properties, revision = 0, conversationId } = noun;
+        return NextResponse.json({ _id, name, traits, properties, revision, conversationId });    
     }
 }
 

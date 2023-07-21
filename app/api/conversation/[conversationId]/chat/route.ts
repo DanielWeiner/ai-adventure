@@ -83,7 +83,9 @@ class Route {
     async GET(req: NextRequest, { params: { conversationId, session, mongoClient, mongoKeepOpen } } : { params: { session: Session, conversationId: string, userMessageId: string, mongoClient: MongoClient, mongoKeepOpen: () => {} } }) {
         const conversations = getConversationCollection(mongoClient);
         const conversation = await conversations.findOne({ '_id': conversationId, userId: session.user.id });
-        const requestId = new URL(req.url).searchParams.get('requestId') || uuid();
+        const searchParams =  new URL(req.url).searchParams;
+        const requestId = searchParams.get('requestId') || uuid();
+        const requestRevision = ((num: number) => isNaN(num) ? 0 : num)(parseInt(searchParams.get('revision') || '0'))
         const redisClient = await createRedisClient();
 
         if (!conversation) {
@@ -170,10 +172,13 @@ class Route {
                                 results = { intents: [] };
                             }
 
-                            for await (const intent of processIntentDetectionResults(results)) {
-                                events.push(...await processChatIntents(mongoClient, conversationId, intent));
-                            }
+                            const intents = [...processIntentDetectionResults(results)];
 
+                            const revision = conversation.revision;
+                            for await (const event of processChatIntents(mongoClient, conversationId, intents, revision, revision + 1)) {
+                                events.push(event);
+                            }
+                        
                             if (events.length) {
                                 await conversations.updateOne({ _id: conversationId }, { 
                                     $push: {
