@@ -27,8 +27,12 @@ class Route {
             return NextResponse.json("Bad Request", { status: 400 });
         }
 
-        const foundRevision = foundMessage.revision || 0;
-        const conversationMessages = conversation.messages.filter(({ revision }) => (revision || 0) === foundRevision);
+        const foundRevision = foundMessage.revision;
+        if (isNaN(foundRevision)) {
+            return NextResponse.json("Bad Request");
+        }
+        
+        const conversationMessages = conversation.messages.filter(({ revision }) => revision === foundRevision);
         const messagesToRetain = conversationMessages.slice(0, conversationMessages.findIndex(({ role }) => role === 'user'));
 
         await rollbackConversationRevision(mongoClient, conversationId, foundMessage.revision || 0);
