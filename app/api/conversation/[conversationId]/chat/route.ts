@@ -85,7 +85,6 @@ class Route {
         const conversation = await conversations.findOne({ '_id': conversationId, userId: session.user.id });
         const searchParams =  new URL(req.url).searchParams;
         const requestId = searchParams.get('requestId') || uuid();
-        const requestRevision = ((num: number) => isNaN(num) ? 0 : num)(parseInt(searchParams.get('revision') || '0'))
         const redisClient = await createRedisClient();
 
         if (!conversation) {

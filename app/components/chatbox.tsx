@@ -2,26 +2,37 @@
 
 import { Message } from "@/app/api/conversation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useCreationContext } from "../create/context";
-import { SendIcon } from "./icons";
+import { ArrowCounterClockwise, SendIcon } from "./icons";
 import { v4 as uuid } from 'uuid';
 import { Noun } from "../api/noun";
 
 const fetchJson = async <T,>(url: string, options?: RequestInit) : Promise<T> => (await fetch(`/api/${url}`, options)).json();
 const getMessages = (conversationId: string) => fetchJson<Message[]>(`/conversation/${conversationId}/message`);
-const postMessage = ({ conversationId, message} : {conversationId: string, message: string}) => fetchJson<Message>(`conversation/${conversationId}/message`, { method: 'POST', body: JSON.stringify(message) });
+const postMessage = ({ conversationId, message } : {conversationId: string, message: string}) => fetchJson<Message>(`conversation/${conversationId}/message`, { method: 'POST', body: JSON.stringify(message) });
+const rollbackMessage = ({ conversationId, messageId, content } : { conversationId: string, messageId: string, content: string }) => fetchJson<Message>(`conversation/${conversationId}/message/${messageId}`, { method: 'PUT', body: JSON.stringify({ content }) });
 
-const ChatBubble = ({ role, children } : { children: React.ReactNode, role: string }) => {
+const ChatBubble = ({ role, editable, resetable, children, onReset } : { children: React.ReactNode, editable: boolean, resetable: boolean, role: string, onReset?: () => void }) => {
     return (
         <div className={`w-full mt-4 flex flex-col border-t border-t-slate-400 first:mt-0 first:border-0 px-4 border-opacity-50 ${role === 'user' ? 'items-end' : 'items-start'}`}>
             <div className={`p-2 whitespace-pre-wrap relative mt-4 rounded-md shadow-sm ring-gray-300 w-fit ${role === 'user' ? 'bg-indigo-500 text-white' : 'bg-slate-50 text-slate-900'}`}>
-                <h4 className={`text-xs py-1 ${
-                    role === 'user' ? 'text-gray-100' : 'text-gray-500'
-                }`}>{role === 'user' ? 'You' : 'AI' }</h4>
+                <span className="flex flex-row justify-between">
+                    <h4 className={`text-xs py-1 ${
+                        role === 'user' ? 'text-gray-100' : 'text-gray-500'
+                    }`}>{role === 'user' ? 'You' : 'AI' }</h4>
+                    <span>
+                        { 
+                        resetable ? 
+                            <div onClick={onReset} className="bg-green-600 rounded-full p-1 text-white w-5 h-5 shadow-md cursor-pointer">
+                                <ArrowCounterClockwise size="100%" />
+                            </div> : null 
+                        }
+                    </span>
+                </span>
                 {children}
             </div>
-        </div>
+        </div>  
     );
 }
 
@@ -73,7 +84,7 @@ export default function ChatBox({ conversationId } : {
                     aiPipelineId: '',
                     content:      message,
                     id:           'new',
-                    pending:      false,
+                    pending:      true,
                     role:         'user',
                     revision:     noun?.revision || 0
                 }
@@ -81,6 +92,15 @@ export default function ChatBox({ conversationId } : {
             setText('');
         }
     });
+
+    const rollbackMessageMutation = useMutation({
+        mutationFn: rollbackMessage,
+        onSuccess: () => {
+            queryClient.invalidateQueries([conversationQueryKey]);
+            queryClient.invalidateQueries([currentNounQueryKey]);
+            queryClient.invalidateQueries([nounsQueryKey]);
+        }
+    })
 
     const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -114,9 +134,9 @@ export default function ChatBox({ conversationId } : {
         if (messagesFetching || nounFetching) return;
         if (!pendingChat || endingEventSource) return;
         if (!eventSource && conversationId) {
-            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}&revision=${noun?.revision}`));
+            setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}`));
         }
-    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetching, endingEventSource, nounFetching, noun?.revision]);
+    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetching, endingEventSource, nounFetching]);
 
     useEffect(() => {
         if (!eventSource || endingEventSource) return;
@@ -179,8 +199,32 @@ export default function ChatBox({ conversationId } : {
             <div className="rounded-sm flex-grow overflow-hidden flex flex-col items-stretch [border-bottom-right-radius:0] [border-bottom-left-radius:0]">
                 <div ref={scroller} className="max-h-full flex-1 shadow-inner overflow-y-scroll flex-grow scrollbar-thumb-slate-500 scrollbar-track-slate-300 scrollbar-thin">
                     <div className={`flex flex-col flex-grow py-1 min-h-full justify-end shadow-lg bg-slate-200 pb-3`}>
-                        {messages.filter(({ pending }) => !(pending && loadingBubble)).map(({ content, role, id }) => <ChatBubble role={role} key={id}>{content}</ChatBubble>)}
-                        {loadingBubble ? <ChatBubble role="assistant">
+                        { messages.map(({ content, role, id, revision, pending }, i) => (
+                            <React.Fragment key={id}>
+                                {
+                                    (pending && loadingBubble) ? 
+                                        null 
+                                    : 
+                                        <ChatBubble 
+                                            editable={!pending && role === 'user' && !isNaN(revision)} 
+                                            resetable={!pending && role === 'assistant' && !isNaN(revision) && !isNaN(messages[i-1]?.revision)}
+                                            role={role} 
+                                            onReset={() => {
+                                                if (conversationId) {
+                                                    rollbackMessageMutation.mutate({
+                                                        conversationId,
+                                                        messageId: id,
+                                                        content: messages[i - 1]?.content || ''
+                                                    });
+                                                }
+                                            }}
+                                        >
+                                            {content}
+                                        </ChatBubble>
+                                }
+                            </React.Fragment>                            
+                        ))}
+                        {loadingBubble ? <ChatBubble editable={false} resetable={false} role="assistant">
                             <div className="flex flex-row">
                                 <div className="py-2 mx-0.5 animate-bounce">
                                     <div className="w-2 h-2 bg-slate-600 rounded-full"></div>

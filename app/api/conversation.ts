@@ -271,3 +271,46 @@ export function* processIntentDetectionResults({ intents }: { intents: Intent[] 
         yield intent;
     }
 }
+
+export async function updateConversationRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
+    const conversations = getConversationCollection(mongoClient);
+    await conversations.updateOne({ _id: conversationId }, {
+        $set: {
+            revision
+        }
+    });
+}
+
+export async function rollbackConversationRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
+    const conversations = getConversationCollection(mongoClient);
+    const conversation = await conversations.findOne({ _id: conversationId }, {
+        projection: {
+            messages: {
+                $filter: {
+                    input: '$messages',
+                    as: 'message',
+                    cond: {
+                        $or: [
+                            { 
+                                $eq: ['$$message.revision', null]
+                            },
+                            {
+                                $lt: [ '$$message.revision', revision ]
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    });
+
+    if (!conversation) {
+        return;
+    }
+    await conversations.updateOne({ _id: conversationId }, {
+        $set: {
+            messages: conversation.messages
+        }
+    });
+}
+

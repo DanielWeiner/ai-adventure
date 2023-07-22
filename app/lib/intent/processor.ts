@@ -1,7 +1,7 @@
-import { NounRevision, calculateRevisionProjection, getNounCollection } from "@/app/api/noun";
+import { getNounCollection, resetNounRevision, updateNounRevision } from "@/app/api/noun";
 import { MongoClient } from "mongodb";
 import { Intent, SetPropertiesIntent, ReplaceTraitsIntent } from ".";
-import { getConversationCollection } from "@/app/api/conversation";
+import { updateConversationRevision } from "@/app/api/conversation";
 
 export async function* processChatIntents(mongoClient: MongoClient, conversationId: string, intents: Intent[], startRevision: number, endRevision: number) {
     await resetNounRevision(mongoClient, conversationId, startRevision);
@@ -24,76 +24,6 @@ export async function* processChatIntents(mongoClient: MongoClient, conversation
 
     await updateConversationRevision(mongoClient, conversationId, endRevision);
     await updateNounRevision(mongoClient, conversationId, endRevision);
-}
-
-async function resetNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
-    const nouns = getNounCollection(mongoClient);
-    const noun = (await nouns.findOne({ conversationId }, {
-        projection: {
-            ...calculateRevisionProjection(revision),
-            revisions: {
-                $ifNull: [
-                    {
-                        $filter: {
-                            input: '$revisions',
-                            as:    'revision',
-                            cond: {
-                                $lte: ['$$revision.revision', revision]
-                            }
-                        }
-                    },
-                    []
-                ]
-            }
-        }
-    }))!;
-
-    await nouns.updateOne({ _id: noun._id }, {
-        $set: {
-            properties: noun.properties,
-            traits:     noun.traits,
-            revisions:  noun.revisions,
-            revision:   revision
-        }
-    });
-}
-
-async function updateConversationRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
-    const conversations = getConversationCollection(mongoClient);
-    await conversations.updateOne({ _id: conversationId }, {
-        $set: {
-            revision
-        }
-    });
-}
-
-async function getNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) : Promise<NounRevision | null> {
-    const nouns = getNounCollection(mongoClient);
-    const noun = await nouns.findOne({ conversationId }, calculateRevisionProjection(revision));
-    return noun;
-}
-
-async function updateNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
-    const nouns = getNounCollection(mongoClient);
-    const { _id, name = '', properties = {}, traits = [] } = await nouns.findOne({ conversationId }) ?? {};
-
-    if (!_id) {
-        return;
-    }
-
-    await nouns.updateOne({ _id },{
-        $set: {
-            revision
-        },
-        $push: {
-            revisions: {
-                name,
-                properties,
-                traits,
-                revision
-            }
-        }
-    });
 }
 
 async function setName(mongoClient: MongoClient, conversationId: string, name: string) {

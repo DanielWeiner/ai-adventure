@@ -81,6 +81,65 @@ export function calculateRevisionProjection(revision: number) {
     };
 }
 
+export async function resetNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
+    const nouns = getNounCollection(mongoClient);
+    const noun = (await nouns.findOne({ conversationId }, {
+        projection: {
+            ...calculateRevisionProjection(revision),
+            revisions: {
+                $ifNull: [
+                    {
+                        $filter: {
+                            input: '$revisions',
+                            as:    'revision',
+                            cond: {
+                                $lte: ['$$revision.revision', revision]
+                            }
+                        }
+                    },
+                    []
+                ]
+            }
+        }
+    }))!;
+
+    await nouns.updateOne({ _id: noun._id }, {
+        $set: {
+            properties: noun.properties,
+            traits:     noun.traits,
+            revisions:  noun.revisions,
+            revision:   revision
+        },
+    });
+}
+
+export async function getNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) : Promise<NounRevision | null> {
+    const nouns = getNounCollection(mongoClient);
+    return nouns.findOne({ conversationId }, calculateRevisionProjection(revision));
+}
+
+export async function updateNounRevision(mongoClient: MongoClient, conversationId: string, revision: number) {
+    const nouns = getNounCollection(mongoClient);
+    const { _id, name = '', properties = {}, traits = [] } = await nouns.findOne({ conversationId }) ?? {};
+
+    if (!_id) {
+        return;
+    }
+
+    await nouns.updateOne({ _id },{
+        $set: {
+            revision
+        },
+        $push: {
+            revisions: {
+                name,
+                properties,
+                traits,
+                revision
+            }
+        }
+    });
+}
 
 export const getNouns = (nounType: NounType) => fetchJson<Noun[]>(`noun/${nounType}`);
 export const getNoun = (nounType: NounType, nounId: string) => fetchJson<Noun | null>(`noun/${nounType}/${nounId}`);
