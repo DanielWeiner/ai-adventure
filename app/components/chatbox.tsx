@@ -55,6 +55,7 @@ export default function ChatBox({ conversationId } : {
         initialData: remoteChatLog
     });
 
+    const messagesFetching = !messagesFetched || fetchStatus === 'fetching';
     const lastMessage = messages.findLast(message => message.role === 'assistant') ?? { pending: true, content: ''};
     const pendingChat = lastMessage.pending;
     const loadingBubble = pendingChat && !lastMessage.content;
@@ -70,11 +71,11 @@ export default function ChatBox({ conversationId } : {
             queryClient.setQueryData([conversationQueryKey], (messages: Message[] | undefined) => (messages || []).concat([
                 {
                     aiPipelineId: '',
-                    content: message,
-                    id: 'new',
-                    pending: false,
-                    role: 'user',
-                    revision: noun?.revision || 0
+                    content:      message,
+                    id:           'new',
+                    pending:      false,
+                    role:         'user',
+                    revision:     noun?.revision || 0
                 }
             ]))
             setText('');
@@ -110,12 +111,12 @@ export default function ChatBox({ conversationId } : {
     }, [ endingEventSource, conversationQueryKey, eventSource, setEndingEventSource, eventSourceHandler, queryClient ]);
 
     useEffect(() => {
-        if (!messagesFetched || fetchStatus === 'fetching' || nounFetching) return;
+        if (messagesFetching || nounFetching) return;
         if (!pendingChat || endingEventSource) return;
         if (!eventSource && conversationId) {
             setEventSource(new EventSource(`/api/conversation/${conversationId}/chat?requestId=${uuid()}&revision=${noun?.revision}`));
         }
-    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetched, fetchStatus, endingEventSource, nounFetching, noun?.revision]);
+    }, [ pendingChat, eventSource, setEventSource, conversationId, messagesFetching, endingEventSource, nounFetching, noun?.revision]);
 
     useEffect(() => {
         if (!eventSource || endingEventSource) return;
@@ -154,7 +155,7 @@ export default function ChatBox({ conversationId } : {
                 eventSource.removeEventListener('message', currentHandler);
             }
             return onMessage;
-        })
+        });
     }, [ eventSource, conversationQueryKey, nounsQueryKey, queryClient, setEventSourceHandler, endingEventSource, setEndingEventSource ])
 
     useEffect(() => {

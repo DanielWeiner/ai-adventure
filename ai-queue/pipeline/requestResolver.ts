@@ -12,6 +12,7 @@ import {
     PIPELINE_REQUESTS_CONSUMER_GROUP, 
     PIPELINE_REQUESTS_QUEUE 
 } from "./constants";
+import { buildPrompt } from "./prompt";
 
 
 export class RequestResolver {
@@ -60,29 +61,17 @@ export class RequestResolver {
             return;
         }
 
-        const toPrompt = (prompt: PipelineItemConfigPrompt | ChatCompletionRequestMessage) => ({
-            role: prompt.role,
-            content: 'content' in prompt ? prompt.content || '' : (prompt as PipelineItemConfigPrompt).replacements.map(replacement => {
-                if ('value' in replacement) return replacement.value;
-                if (replacement.regexMatch) {
-                    const regex = new RegExp(replacement.regexMatch[0], replacement.regexMatch[1]);
-                    const match = idsContents[replacement.prevItemId].match(regex)
-                    if (match === null) return '';
-                    return match[replacement.regexMatchIndex ?? 0] || '';
-                }
-                return idsContents[replacement.prevItemId];
-            }).join('')
-        });
-
+        const toPrompt = buildPrompt.bind(null, idsContents);
+        
         const completer = new ChatCompleter(this.#openAi, this.#logger)
             .configure(request.configuration || {})
             .addFunctions(...request.functions || [])
             .setSystemMessage(
-                typeof request.systemMessage === 'string' ? request.systemMessage : 
+                typeof request.systemMessage === 'string' ? toPrompt({ role: 'user', content: request.systemMessage }).content : 
                 request.systemMessage ? toPrompt(request.systemMessage).content 
                 : ''
             );
-    
+
         await this.#redisClient.xAdd(item.calculateStreamKey(), '*', { content: '', event: PIPELINE_ITEM_EVENT_BEGIN })
         if (request.kind === 'stream') {
             try {

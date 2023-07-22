@@ -1,4 +1,4 @@
-import { ChatCompletionRequestMessageRoleEnum } from "openai";
+import { ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum } from "openai";
 import { ItemResultsReplacement, PromptReplacementTransformer, PipelineItemConfigPrompt, PipelineItemPromptReplacement } from "./config";
 
 export function literal(str: string) {
@@ -42,6 +42,25 @@ function prompt(roleName: ChatCompletionRequestMessageRoleEnum) {
             };
         };
     }
+}
+
+export const buildPrompt = (contentById: { [key in string]: string; }, prompt: PipelineItemConfigPrompt | ChatCompletionRequestMessage) => {
+    return {
+        role: prompt.role,
+        content: ('content' in prompt ? prompt.content || '' : (prompt as PipelineItemConfigPrompt).replacements.map(replacement => {
+            if ('value' in replacement) return replacement.value;
+            if (replacement.regexMatch) {
+                const regex = new RegExp(replacement.regexMatch[0], replacement.regexMatch[1]);
+                const match = contentById[replacement.prevItemId].match(regex)
+                if (match === null) return '';
+                return match[replacement.regexMatchIndex ?? 0] || '';
+            }
+            return contentById[replacement.prevItemId];
+        }).join(''))
+        .trim()
+        .replace(/[^\S\r\n]*([\r\n]+)[^\S\r\n]*/gm, '$1')
+        .replace(/[^\S\r\n]+/gm, ' ')
+    };
 }
 
 export const userPrompt = prompt('user');
