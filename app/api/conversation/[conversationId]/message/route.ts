@@ -21,6 +21,8 @@ class Route {
             return NextResponse.json("Not Found", { status: 404 });
         }
 
+        const revision = conversation.revision || 0;
+
         const newMessage : Message = {        
             role:         'user',
             content:      message,
