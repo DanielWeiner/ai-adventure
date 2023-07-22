@@ -235,6 +235,7 @@ class Route {
                         }
                     })()
                 ]).finally(async () => {
+                    await redisClient.quit();
                     await mongoClient.close();
                 });
             });
