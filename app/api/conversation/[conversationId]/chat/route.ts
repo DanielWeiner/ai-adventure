@@ -174,7 +174,7 @@ class Route {
 
                             const intents = [...processIntentDetectionResults(results)];
 
-                            const revision = conversation.revision;
+                            const revision = conversation.revision || 0;
                             for await (const event of processChatIntents(mongoClient, conversationId, intents, revision, revision + 1)) {
                                 events.push(event);
                             }
