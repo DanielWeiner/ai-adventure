@@ -4,16 +4,54 @@ import { Message } from "@/app/api/conversation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useEffect, useRef, useState } from "react";
 import { useCreationContext } from "../create/context";
-import { ArrowCounterClockwise, SendIcon } from "./icons";
+import { ArrowCounterClockwiseIcon, PencilIcon, SendIcon, CheckIcon } from "./icons";
 import { v4 as uuid } from 'uuid';
 import { Noun } from "../api/noun";
 
 const fetchJson = async <T,>(url: string, options?: RequestInit) : Promise<T> => (await fetch(`/api/${url}`, options)).json();
 const getMessages = (conversationId: string) => fetchJson<Message[]>(`/conversation/${conversationId}/message`);
 const postMessage = ({ conversationId, message } : {conversationId: string, message: string}) => fetchJson<Message>(`conversation/${conversationId}/message`, { method: 'POST', body: JSON.stringify(message) });
-const rollbackMessage = ({ conversationId, messageId, content } : { conversationId: string, messageId: string, content: string }) => fetchJson<Message>(`conversation/${conversationId}/message/${messageId}`, { method: 'PUT', body: JSON.stringify({ content }) });
+const rollbackMessage = ({ 
+    conversationId, 
+    messageId, 
+    content } : { 
+        conversationId: string, 
+        messageId: string, 
+        content: string 
+    }) => fetchJson<Message>(`conversation/${conversationId}/message/${messageId}`, { 
+        method: 'PUT', 
+        body: JSON.stringify({ content }) 
+    });
 
-const ChatBubble = ({ role, editable, resetable, children, onReset } : { children: React.ReactNode, editable: boolean, resetable: boolean, role: string, onReset?: () => void }) => {
+const ChatBubble = ({ 
+    role, 
+    editable, 
+    resetable, 
+    children, 
+    onReset, 
+    onEditStart, 
+    onEditConfirm, 
+    onEditCancel
+} : { 
+    children: React.ReactNode, 
+    editable: boolean, 
+    resetable: boolean, 
+    role: string,
+    onReset?: () => void, 
+    onEditStart?: () => void
+    onEditConfirm?: (str: string) => void,
+    onEditCancel?: () => void
+}) => {
+    const editableContentDiv = useRef<HTMLDivElement | null>(null);
+    const [editing, setEditing] = useState(false);
+    const [editContent, setEditContent] = useState('');
+    useEffect(() => {
+        if (editing) {
+            setEditContent('');
+            editableContentDiv.current?.focus();
+        }
+    }, [ editing, editableContentDiv ])
+
     return (
         <div className={`w-full mt-4 flex flex-col border-t border-t-slate-400 first:mt-0 first:border-0 px-4 border-opacity-50 ${role === 'user' ? 'items-end' : 'items-start'}`}>
             <div className={`p-2 whitespace-pre-wrap relative mt-4 rounded-md shadow-sm ring-gray-300 w-fit ${role === 'user' ? 'bg-indigo-500 text-white' : 'bg-slate-50 text-slate-900'}`}>
@@ -24,13 +62,37 @@ const ChatBubble = ({ role, editable, resetable, children, onReset } : { childre
                     <span>
                         { 
                         resetable ? 
-                            <div onClick={onReset} className="bg-green-600 rounded-full p-1 text-white w-5 h-5 shadow-md cursor-pointer">
-                                <ArrowCounterClockwise size="100%" />
-                            </div> : null 
+                            <div onClick={onReset} className="bg-indigo-500 rounded-full p-1 text-white w-5 h-5 shadow-md cursor-pointer">
+                                <ArrowCounterClockwiseIcon size="100%" />
+                            </div> : 
+                            editable ? 
+                                editing ? 
+                                    <div onMouseDown={() =>{
+                                        setEditing(false);
+                                        onEditConfirm?.(editContent);
+                                    }} className="bg-white ml-2 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
+                                        <CheckIcon size="100%"/>
+                                    </div> :
+                                    <div onClick={() => {
+                                        setEditing(true);
+                                        onEditStart?.();
+                                    }} className="bg-white rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
+                                        <PencilIcon size="100%"/>
+                                    </div> 
+                                : null
                         }
                     </span>
                 </span>
-                {children}
+                <div onBlur={(e) => {
+                    if (editing) {
+                        setEditing(false);
+                        onEditCancel?.();
+                    }
+                }} onInput={() => setEditContent(editableContentDiv.current?.innerText || '')} ref={editableContentDiv} contentEditable={editing}>
+                    {
+                        editing ? null : children
+                    }
+                </div>
             </div>
         </div>  
     );
@@ -44,6 +106,8 @@ export default function ChatBox({ conversationId } : {
     const { sessionToken, messages: remoteChatLog, nounType, noun: contextNoun, awaitingNewNoun } = useCreationContext();
     const [ eventSourceHandler, setEventSourceHandler ] = useState<((event: MessageEvent) => void) | null>(null);
     const [ endingEventSource, setEndingEventSource ] = useState(false);
+    const scroller = useRef<HTMLDivElement | null>(null);
+
     const queryClient = useQueryClient();
     const { _id: nounId } = contextNoun || {};
     const conversationQueryKey = `conversation_${sessionToken}_${conversationId ?? 'new' }`;
@@ -102,7 +166,7 @@ export default function ChatBox({ conversationId } : {
         }
     })
 
-    const scroller = useRef<HTMLDivElement | null>(null);
+    
 
     useEffect(() => {
         if (!awaitingNewNoun) {
@@ -205,9 +269,9 @@ export default function ChatBox({ conversationId } : {
                                     (pending && loadingBubble) ? 
                                         null 
                                     : 
-                                        <ChatBubble 
-                                            editable={!pending && role === 'user' && !isNaN(revision)} 
-                                            resetable={!pending && role === 'assistant' && !isNaN(revision) && !isNaN(messages[i-1]?.revision)}
+                                        <ChatBubble
+                                            editable={!pending && chatEnabled && role === 'user' && !isNaN(revision)} 
+                                            resetable={!pending && chatEnabled && role === 'assistant' && !isNaN(revision) && !isNaN(messages[i-1]?.revision)}
                                             role={role} 
                                             onReset={() => {
                                                 if (conversationId) {
@@ -215,6 +279,15 @@ export default function ChatBox({ conversationId } : {
                                                         conversationId,
                                                         messageId: id,
                                                         content: messages[i - 1]?.content || ''
+                                                    });
+                                                }
+                                            }}
+                                            onEditConfirm={(editValue) => {
+                                                if (conversationId && editValue) {
+                                                    rollbackMessageMutation.mutate({
+                                                        conversationId,
+                                                        messageId: id,
+                                                        content: editValue
                                                     });
                                                 }
                                             }}

@@ -154,8 +154,9 @@ export class PipelineItem {
         events?:         PipelineItemEvent[];
     }) : AsyncGenerator<{ content: string, event: PipelineItemEvent }> {
         const subscriber = await createRedisClient();
+        const consumerClient = await createRedisClient();
         const queueConsumer = new QueueConsumer({
-            redisClient: await createRedisClient(),
+            redisClient: consumerClient,
             consumerGroupId,
             id: consumerId,
             key: this.calculateStreamKey(),
@@ -184,5 +185,8 @@ export class PipelineItem {
 
         await queueConsumer.destroy();
         await subscriber.quit();
+        try {
+            await consumerClient.quit();
+        } catch {}
     }
 }
