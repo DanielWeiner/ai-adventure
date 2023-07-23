@@ -69,11 +69,14 @@ const ChatBubble = ({
                                 editing ? 
                                     <div onMouseDown={() =>{
                                         setEditing(false);
-                                        onEditConfirm?.(editContent);
+                                        if (editContent.trim()) {
+                                            onEditConfirm?.(editContent);
+                                        }
                                     }} className="bg-white ml-4 mb-2 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
                                         <CheckIcon size="100%"/>
                                     </div> :
                                     <div onClick={() => {
+                                        
                                         setEditing(true);
                                         onEditStart?.();
                                     }} className="bg-white ml-4 mb-2 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
