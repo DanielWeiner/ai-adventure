@@ -70,13 +70,13 @@ const ChatBubble = ({
                                     <div onMouseDown={() =>{
                                         setEditing(false);
                                         onEditConfirm?.(editContent);
-                                    }} className="bg-white ml-2 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
+                                    }} className="bg-white ml-4 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
                                         <CheckIcon size="100%"/>
                                     </div> :
                                     <div onClick={() => {
                                         setEditing(true);
                                         onEditStart?.();
-                                    }} className="bg-white rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
+                                    }} className="bg-white ml-4 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
                                         <PencilIcon size="100%"/>
                                     </div> 
                                 : null
