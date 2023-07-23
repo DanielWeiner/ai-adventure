@@ -62,7 +62,7 @@ const ChatBubble = ({
                     <span>
                         { 
                         resetable ? 
-                            <div onClick={onReset} className="bg-indigo-500 rounded-full p-1 text-white w-5 h-5 shadow-md cursor-pointer">
+                            <div onClick={onReset} className="bg-indigo-500 rounded-full p-1 text-white w-5 h-5 ml-4 mb-2 shadow-md cursor-pointer">
                                 <ArrowCounterClockwiseIcon size="100%" />
                             </div> : 
                             editable ? 
@@ -70,13 +70,13 @@ const ChatBubble = ({
                                     <div onMouseDown={() =>{
                                         setEditing(false);
                                         onEditConfirm?.(editContent);
-                                    }} className="bg-white ml-4 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
+                                    }} className="bg-white ml-4 mb-2 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
                                         <CheckIcon size="100%"/>
                                     </div> :
                                     <div onClick={() => {
                                         setEditing(true);
                                         onEditStart?.();
-                                    }} className="bg-white ml-4 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
+                                    }} className="bg-white ml-4 mb-2 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
                                         <PencilIcon size="100%"/>
                                     </div> 
                                 : null
@@ -274,6 +274,9 @@ export default function ChatBox({ conversationId } : {
                                             resetable={!pending && chatEnabled && role === 'assistant' && !isNaN(revision) && !isNaN(messages[i-1]?.revision)}
                                             role={role} 
                                             onReset={() => {
+                                                queryClient.setQueryData([conversationQueryKey], (messages: Message[] | undefined) => {
+                                                    return (messages || []).slice(0, i);
+                                                });
                                                 if (conversationId) {
                                                     rollbackMessageMutation.mutate({
                                                         conversationId,
@@ -283,6 +286,18 @@ export default function ChatBox({ conversationId } : {
                                                 }
                                             }}
                                             onEditConfirm={(editValue) => {
+                                                queryClient.setQueryData([conversationQueryKey], (messages: Message[] | undefined) => {
+                                                    return (messages || []).slice(0, i).concat([
+                                                        {
+                                                            aiPipelineId:'',
+                                                            content: editValue,
+                                                            pending: true,
+                                                            id,
+                                                            revision,
+                                                            role
+                                                        }
+                                                    ]);
+                                                });
                                                 if (conversationId && editValue) {
                                                     rollbackMessageMutation.mutate({
                                                         conversationId,
