@@ -48,11 +48,10 @@ export default class QueueConsumer {
     async *watch() : AsyncGenerator<{ id: string, message: { [key in string]: string }}> {
         const onAbort = () => {
             const oldClient = this.#redisClient;
-            const newClient = oldClient.duplicate();
-            newClient.connect();
-            this.#redisClient = newClient;
+            this.#redisClient = oldClient.duplicate();
             oldClient.on('error', () => {});
-            oldClient.disconnect().catch(() => {});
+            oldClient.disconnect();
+            oldClient.unref();
         };
         
         mainLoop:
@@ -63,7 +62,7 @@ export default class QueueConsumer {
             this.#abortEmitter.on('abort', onAbort);
             try {
                 await this.#ensureGroupExists();
-                items = await this.#redisClient.xReadGroup(commandOptions({ isolated: true }),this.#consumerGroupId, this.#id, {
+                items = await this.#redisClient.xReadGroup(this.#consumerGroupId, this.#id, {
                     key: this.#key,
                     id: '>',
                 }, {
@@ -71,6 +70,7 @@ export default class QueueConsumer {
                     BLOCK: this.#pollTime
                 });
             } catch {
+                this.#done = true;
                 aborted = true;
                 items = null;
             }
@@ -92,6 +92,10 @@ export default class QueueConsumer {
                 yield message;
             }
         }
+
+        if (!this.#redisClient.isOpen) {
+            await this.#redisClient.connect();
+        }
     }
 
     breakLoop() {
@@ -111,10 +115,15 @@ export default class QueueConsumer {
             await this.#redisClient.xGroupCreate(this.#key, this.#consumerGroupId, this.#startMessageId);
         }
     }
+
     async destroy() {
         if (await this.#redisClient.exists(this.#key)) {
             await this.#redisClient.xGroupDelConsumer(this.#key, this.#consumerGroupId, this.#id);
         }
+    }
+
+    async quit() {
+        await this.#redisClient.quit();
     }
 
     async ack(messageId: string) {

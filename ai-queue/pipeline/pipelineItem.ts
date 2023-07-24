@@ -1,5 +1,5 @@
 import { RedisClientType } from "redis";
-import { PIPELINE_ITEMS_QUEUE, PIPELINE_ITEM_EVENT_END, PipelineItemEvent } from "./constants";
+import { PIPELINE_ITEMS_QUEUE, PipelineItemEvent } from "./constants";
 import { PipelineItemCollectionItem } from "./itemCollection";
 import QueueConsumer from "./queueConsumer";
 import { createRedisClient, useRedisClient } from "./redisClient";
@@ -154,23 +154,27 @@ export class PipelineItem {
         events?:         PipelineItemEvent[];
     }) : AsyncGenerator<{ content: string, event: PipelineItemEvent }> {
         const subscriber = await createRedisClient();
-        const consumerClient = await createRedisClient();
         const queueConsumer = new QueueConsumer({
-            redisClient: consumerClient,
+            redisClient: await createRedisClient(),
             consumerGroupId,
             id: consumerId,
             key: this.calculateStreamKey(),
             startMessageId: '0'
         });        
         
-        let timeoutHandle : NodeJS.Timeout;
+        let timeoutHandle : NodeJS.Timeout | null = null;
         const subscription = (val: string) => {
+            if (timeoutHandle === null) {
+                return;
+            }
             if (val === '1') {
                 clearTimeout(timeoutHandle);
+                timeoutHandle = null;
                 queueConsumer.breakLoop();
             }
         };
         timeoutHandle = setTimeout(() => { 
+            timeoutHandle = null;
             queueConsumer.breakLoop();
         }, timeout);
 
@@ -184,9 +188,7 @@ export class PipelineItem {
         }
 
         await queueConsumer.destroy();
+        await queueConsumer.quit();
         await subscriber.quit();
-        try {
-            await consumerClient.quit();
-        } catch {}
     }
 }

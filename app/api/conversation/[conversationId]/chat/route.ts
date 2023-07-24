@@ -120,6 +120,7 @@ class Route {
                     (async () => {
                         const chatItem = pipeline.getItemByRequestAlias('chat')!;
                         if (await chatItem.isDone(redisClient)) {
+                            await chatItem.endOtherStreamWatchers();
                             return;
                         }
     

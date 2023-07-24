@@ -4,9 +4,9 @@ const { REDIS_URL } = process.env;
 export const createRedisClient = async () => {
     const client : RedisClientType = createClient({
         url: REDIS_URL,
-        pingInterval: 5000,
+        pingInterval: 2000,
         socket: {
-            reconnectStrategy: 10,
+            reconnectStrategy: 10
         }
     });
     await client.connect();
