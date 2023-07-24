@@ -48,7 +48,6 @@ const ChatBubble = ({
     const [editContent, setEditContent] = useState('');
     useEffect(() => {
         if (editing && inputElement.current) {
-            console.log(inputElement);
             inputElement.current.focus();
             inputElement.current.setSelectionRange(editContent.length, editContent.length);
         }
