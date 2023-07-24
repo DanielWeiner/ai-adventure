@@ -49,7 +49,6 @@ const ChatBubble = ({
     useEffect(() => {
         if (editing && inputElement.current) {
             inputElement.current.focus();
-            inputElement.current.setSelectionRange(editContent.length, editContent.length);
         }
     }, [ editing, inputElement.current ])
 
@@ -88,10 +87,18 @@ const ChatBubble = ({
                     </span>
                 </span>
                 {
-                    editing ? <input ref={inputElement} className="bg-indigo-500" onBlur={() => {
+                    editing ? <form onSubmit={e => {
+                        e.preventDefault();
                         setEditing(false);
-                        onEditCancel?.();
-                    }} value={editContent} onChange={(e) => setEditContent(e.target.value)} /> : <div ref={contentDiv}>{children}</div>
+                        if (editContent.trim()) {
+                            onEditConfirm?.(editContent);
+                        }
+                    }}>
+                        <input ref={inputElement} className="bg-indigo-500" onBlur={() => {
+                            setEditing(false);
+                            onEditCancel?.();
+                        }} value={editContent} onChange={(e) => setEditContent(e.target.value)} />
+                    </form> : <div ref={contentDiv}>{children}</div>
                 }
                 
             </div>
