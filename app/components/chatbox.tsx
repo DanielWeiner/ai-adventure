@@ -42,15 +42,17 @@ const ChatBubble = ({
     onEditConfirm?: (str: string) => void,
     onEditCancel?: () => void
 }) => {
-    const editableContentDiv = useRef<HTMLDivElement | null>(null);
+    const inputElement = useRef<HTMLInputElement | null>(null);
+    const contentDiv = useRef<HTMLDivElement | null>(null);
     const [editing, setEditing] = useState(false);
     const [editContent, setEditContent] = useState('');
     useEffect(() => {
-        if (editing) {
-            setEditContent('');
-            editableContentDiv.current?.focus();
+        if (editing && inputElement.current) {
+            console.log(inputElement);
+            inputElement.current.focus();
+            inputElement.current.setSelectionRange(editContent.length, editContent.length);
         }
-    }, [ editing, editableContentDiv ])
+    }, [ editing, inputElement.current ])
 
     return (
         <div className={`w-full mt-4 flex flex-col border-t border-t-slate-400 first:mt-0 first:border-0 px-4 border-opacity-50 ${role === 'user' ? 'items-end' : 'items-start'}`}>
@@ -76,7 +78,7 @@ const ChatBubble = ({
                                         <CheckIcon size="100%"/>
                                     </div> :
                                     <div onClick={() => {
-                                        
+                                        setEditContent(contentDiv.current?.innerText || '');
                                         setEditing(true);
                                         onEditStart?.();
                                     }} className="bg-white ml-4 mb-2 rounded-full text-indigo-500 p-1 w-5 h-5 shadow-md cursor-pointer">
@@ -86,16 +88,13 @@ const ChatBubble = ({
                         }
                     </span>
                 </span>
-                <div onBlur={(e) => {
-                    if (editing) {
+                {
+                    editing ? <input ref={inputElement} className="bg-indigo-500" onBlur={() => {
                         setEditing(false);
                         onEditCancel?.();
-                    }
-                }} onInput={() => setEditContent(editableContentDiv.current?.innerText || '')} ref={editableContentDiv} contentEditable={editing}>
-                    {
-                        editing ? null : children
-                    }
-                </div>
+                    }} value={editContent} onChange={(e) => setEditContent(e.target.value)} /> : <div ref={contentDiv}>{children}</div>
+                }
+                
             </div>
         </div>  
     );
