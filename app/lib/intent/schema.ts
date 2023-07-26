@@ -3,12 +3,12 @@ import { intent } from ".";
 import { property, string, array, items, requiredObject, number, anyOf, option, describe } from "../../../ai-queue/jsonSchema";
 
 const setName = (context: string) => intent('setName')(
+    describe(`The name of the ${context} has been set.`),
     property('name')(
         string(
-            describe(`the name of the ${context}`)
+            describe(`The new name of the ${context}`)
         ),
-    ),
-    describe(`The name of the ${context} has been set`)
+    )
 );
 
 const setProperties = (context: string) => intent('setProperties')(
@@ -19,17 +19,16 @@ const setProperties = (context: string) => intent('setProperties')(
                 requiredObject(
                     property('propertyName')(
                         string(
-                            describe(`The name of the property. Must be plain English, as short as possible, without camel case. No special characters or numbers. Spaces are allowed. Cannot represent the name of the ${context}. Cannot represent a boolean value.`)
+                            describe(`The name of the property`)
                         )
                     ),
                     property('propertyValue')(
                         string(
-                            describe('The value of the property. Must be short but descriptive, without grammar or punctuation. Boolean values are not allowed. For multiple values, concatenate the values with commas, and space them.')
+                            describe('The value of the property.')
                         )
                     )
                 )
-            ),
-            describe(`The properties of the ${context} to set`,)
+            )
         )
     )
 );
@@ -40,7 +39,7 @@ const addTraits = (context: string) => intent('addTraits')(
         array(
             items(
                 string(
-                    describe(`The miscellaneous trait describing the ${context}. The trait must be short but descriptive. The trait must make sense on its own. Do not combine multiple traits into a single string.`)
+                    describe(`The added trait`)
                 )
             )
         )
@@ -48,12 +47,12 @@ const addTraits = (context: string) => intent('addTraits')(
 );
 
 const removeProperties = (context: string) => intent('removeProperties')(
-    describe(`Remove properties from the ${context}`),
+    describe(`Properties have been removed from the ${context}`),
     property('propertyNames')(
         array(
             items(
                 string(
-                    describe( `The name of the property to remove. Refer to the up-to-date ${context} information to determine this.`)
+                    describe(`The name of the property to remove. Refer to the up-to-date ${context} information to determine this.`)
                 )
             )
         )
@@ -61,7 +60,7 @@ const removeProperties = (context: string) => intent('removeProperties')(
 );
 
 const removeTraits = (context: string) => intent('removeTraits')(
-    describe(`Remove miscellaneous traits from the ${context}`),
+    describe(`Traits have been removed from the ${context}`),
     property('traitIndices')(
         array(
             items(
@@ -86,7 +85,7 @@ const replaceTraits = (context: string) => intent('replaceTraits')(
                     ),
                     property('newValue')(
                         string(
-                            describe('The value that the trait at the given index should be replaced with. Must shortened but descriptive, without grammar or punctuation. Must make sense on its own.')
+                            describe('The value that the trait at the given index should be replaced with')
                         )
                     )
                 )

@@ -110,7 +110,11 @@ type RelevantInformation = {
 export function listRelevantInformation({ name, properties, traits } : RelevantInformation) {
     return [
         `name: ${name || 'unknown' }`,
+        '\n',
+        'properties:',
         ...[...Object.entries(properties)].map(([key, val]) => `${key}: ${val}`),
+        '\n',
+        'traits:',
         ...traits.map((val) => `- ${val}`)
     ].join('\n').trim();
 }
@@ -246,12 +250,39 @@ function createIntentDetectionPrompt(relevantInfo: RelevantInformation) : Pipeli
             functionName: 'generateIntents',
             functions: [generateIntentsSchema(relevantInfo.type)],
             systemMessage: `
-                You are an intent classifier. 
-                Do not generate redundant intents. 
-                Do not leave out any user-provided information. 
-                Only use the information provided by the user.
-                The intent content must closely match the information provided by the user.
-    
+                You are an intent classifier.
+
+                General rules:
+                - Do not generate redundant intents. 
+                - Try to infer intents for all user-provided information, no matter how minor.
+                - Only use the information provided by the user.
+                - The intent content must closely match the information provided by the user.
+
+                Rules for the "setProperties" intent:
+                - Output the "setProperties" intent if the user intends to set a named property of the ${relevantInfo.type}.
+                - Property names must be plain English, as short as possible.
+                - Property names must not use camel case.
+                - Property names must not have special characters or numbers. 
+                - Property names may have spaces. 
+                - Properties must not represent the name of the ${relevantInfo.type}; instead, use the "setName" intent.
+                - Properties must be short but descriptive.
+                - Properties may not be boolean.
+                - Property names must not be duplicated. 
+                - If a single property has multiple values, concatenate the values with commas and space them.
+
+                Rules for the "setName" intent:
+                - Output the "setName" intent if the user intends to set the name of the ${relevantInfo.type}.
+
+                Rules for the "addTraits" intent:
+                - Output the "addTraits" intent if the user intends to add an unnamed, miscellaneous trait to the ${relevantInfo.type}.
+                - Each trait must be short but descriptive. 
+                - Each trait must make sense on its own without context from other traits.
+                - Do not combine multiple traits into a single string.
+
+                Rules for the "replaceTraits" intent:
+                - Output the "replaceTraits" intent if the user intends to replace an unnamed, miscellaneous trait of the ${relevantInfo.type}.
+                - Replaced traits should follow the same formatting rules as "addTraits".
+
                 Current up-to-date information about the ${relevantInfo.type}:
                 ${relevantInfoStr}
             `,
