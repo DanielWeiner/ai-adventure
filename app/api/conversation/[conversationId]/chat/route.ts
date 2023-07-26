@@ -31,7 +31,6 @@ function encodeEvent(payload: string) {
 
 class SSEEmitter<T> implements AsyncIterable<T> {
     #done = false;
-    #updatePromise : Promise<void>;
     #resolve : ({ done } : { done: boolean }) => void = ({ done }) => {
         this.#done = done;
     };
@@ -45,10 +44,6 @@ class SSEEmitter<T> implements AsyncIterable<T> {
             };
             resolve(); 
         };
-    }
-
-    constructor() {
-        this.#updatePromise = new Promise(this.#promiseCallback);
     }
 
     push(data: T) {
@@ -66,9 +61,7 @@ class SSEEmitter<T> implements AsyncIterable<T> {
     }
     
     async *[Symbol.asyncIterator](): AsyncIterator<T, any, undefined> {
-        while (!this.#done) {
-            await this.#updatePromise;
-            this.#updatePromise = new Promise(this.#promiseCallback);
+        while (await new Promise<void>(this.#promiseCallback), !this.#done) {
             let value : T | undefined;
             while(value = this.#queue.pop(), value !== undefined) {
                 yield value;

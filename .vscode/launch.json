@@ -9,7 +9,7 @@
             "address": "0.0.0.0",
             "localRoot": "${workspaceFolder}/app",
             "name": "Attach to Remote",
-            "port": 39229,
+            "port": 9233,
             "remoteRoot": "/home/node/app/app",
             "request": "attach",
             "skipFiles": [
