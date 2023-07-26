@@ -38,8 +38,6 @@ services:
       - AI_QUEUE_LOG=1
     command: sh -c "npm ci; (npm run watch & cd .ai-queue && npx nodemon --inspect=0.0.0.0:9229 server.js);"
   app-dev-server:
-    cap_add:
-      - NET_ADMIN
     build: 
       context: .
       dockerfile: app/docker/Dockerfile
