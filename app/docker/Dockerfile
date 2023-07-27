@@ -19,10 +19,7 @@ COPY --from=base /home/node/app/ai-queue/node_modules/ ai-queue/node_modules/
 
 FROM install AS dev
 
-RUN apk --no-cache add iptables
-RUN apk --no-cache add bash
-
-ENTRYPOINT [ "/bin/bash", "app/docker/start_dev_server.sh" ]
+ENTRYPOINT [ "/bin/sh", "app/docker/start_dev_server.sh" ]
 
 FROM install AS main
 

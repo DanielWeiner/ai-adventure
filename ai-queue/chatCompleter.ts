@@ -54,8 +54,8 @@ export default class ChatCompleter {
         return this;
     }
 
-    setSystemMessage(systemMessage: string) {
-        this.#systemMessage = systemMessage;
+    setSystemMessage(systemMessage: string | null) {
+        this.#systemMessage = systemMessage || '';
 
         return this;
     }
@@ -67,8 +67,7 @@ export default class ChatCompleter {
                 function_call: {
                     name: functionName
                 }
-            } : null,
-            functions: this.#functions
+            } : null
         };
         this.#logger.info(`openai function call: ${JSON.stringify(options)}`);
         const response = await this.#openAi.createChatCompletion(options);
@@ -126,7 +125,8 @@ export default class ChatCompleter {
             messages: [
                 ...this.#systemMessage ? [{ role: 'system', content: `${this.#systemMessage}` } as const] : [],
                 ...messages
-            ]
+            ],
+            functions: this.#functions
         };
     }
 }

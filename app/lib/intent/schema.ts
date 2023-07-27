@@ -24,7 +24,7 @@ const setProperties = (context: string) => intent('setProperties')(
                     ),
                     property('propertyValue')(
                         string(
-                            describe('The value of the property.')
+                            describe('The non-empty value of the property')
                         )
                     )
                 )

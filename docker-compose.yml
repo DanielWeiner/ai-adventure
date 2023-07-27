@@ -19,11 +19,12 @@ services:
   ai-queue-server:
     build: 
       context: ai-queue
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
+      target: dev
     volumes:
       - ./ai-queue:/home/node/app/
-      - /home/node/app/node_modules/
-      - /home/node/app/.ai-queue/
+      - queue-server-deps:/home/node/app/node_modules/
+      - queue-server-dist:/home/node/app/.ai-queue/
     env_file:
       - ai-queue/.env
     ports:
@@ -35,8 +36,6 @@ services:
       - ai-queue
     environment:
       - REDIS_URL=redis://ai-queue:6379
-      - AI_QUEUE_LOG=1
-    command: sh -c "npm ci; (npm run watch & cd .ai-queue && npx nodemon --inspect=0.0.0.0:9229 server.js);"
   app-dev-server:
     build: 
       context: .
@@ -44,11 +43,11 @@ services:
       target: dev
     volumes:
       - ./:/home/node/app/
-      - /home/node/app/data/
-      - /home/node/app/.next/
-      - /home/node/app/node_modules/
-      - /home/node/app/ai-queue/node_modules/
-      - /home/node/app/ai-queue/.ai-queue/
+      - app-server-data:/home/node/app/data/
+      - app-server-dist:/home/node/app/.next/
+      - app-server-deps:/home/node/app/node_modules/
+      - app-server-ai-deps:/home/node/app/ai-queue/node_modules/
+      - app-server-ai-dist:/home/node/app/ai-queue/.ai-queue/
     env_file:
       - .env
     ports:
@@ -68,4 +67,14 @@ volumes:
   queue-server-deps:
     driver: local
   queue-server-dist:
+    driver: local
+  app-server-deps:
+    driver: local
+  app-server-dist:
+    driver: local
+  app-server-data:
+    driver: local
+  app-server-ai-deps:
+    driver: local
+  app-server-ai-dist:
     driver: local

@@ -75,7 +75,7 @@ export class RequestResolver {
         await this.#redisClient.xAdd(item.calculateStreamKey(), '*', { content: '', event: PIPELINE_ITEM_EVENT_BEGIN })
         if (request.kind === 'stream') {
             try {
-                for await (const { content } of completer.generateChatCompletionDeltas(request.messages.map(toPrompt))) {
+                for await (const { content } of completer.generateChatCompletionDeltas(request.messages.map(toPrompt) as any)) {
                     await this.#redisClient
                         .multi()
                             .append(item.calculateContentKey(), content)
@@ -88,7 +88,7 @@ export class RequestResolver {
             }
         } else if (request.kind === 'function') {
             try {
-                const content = JSON.stringify(await completer.createFunctionCallCompletion(request.messages.map(toPrompt), request.functionName));
+                const content = JSON.stringify(await completer.createFunctionCallCompletion(request.messages.map(toPrompt) as any, request.functionName));
                 await this.#redisClient
                     .multi()
                         .append(item.calculateContentKey(), content)
@@ -101,7 +101,7 @@ export class RequestResolver {
             }
         } else {
             try {
-                const content = await completer.createChatCompletion(request.messages.map(toPrompt));
+                const content = await completer.createChatCompletion(request.messages.map(toPrompt) as any);
                 await this.#redisClient
                     .multi()
                         .append(item.calculateContentKey(), content)

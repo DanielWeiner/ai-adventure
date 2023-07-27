@@ -2,8 +2,9 @@ import { ChatCompletionFunctions, ChatCompletionRequestMessage, ChatCompletionRe
 import { v4 as uuid } from 'uuid';
 
 export interface PipelineItemConfigPrompt {
-    role:         ChatCompletionRequestMessageRoleEnum;
-    replacements: PipelineItemPromptReplacement[];
+    role:          ChatCompletionRequestMessageRoleEnum;
+    replacements:  PipelineItemPromptReplacement[];
+    functionName?: string;
 }
 
 export interface ItemResultsReplacement {

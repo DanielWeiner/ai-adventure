@@ -32,7 +32,12 @@ export interface JSONSchemaAnyOfValue {
     description?: string;
 }
 
-type JSONSchemaType = JSONSchemaNumberValue | JSONSchemaStringValue | JSONSchemaObjectValue | JSONSchemaArrayValue;
+export interface JSONSchemaNullValue {
+    type:         'null';
+    description?: string;
+}
+
+type JSONSchemaType = JSONSchemaNumberValue | JSONSchemaStringValue | JSONSchemaObjectValue | JSONSchemaArrayValue | JSONSchemaNullValue;
 type JSONSchemaMappers<T extends JSONSchemaValue> = ((obj: T) => T)[];
 
 export type JSONSchemaValue = JSONSchemaType | JSONSchemaAnyOfValue;
@@ -74,6 +79,7 @@ export const object = typeFn('object');
 export const array = typeFn('array');
 export const number = typeFn('number');
 export const string = typeFn('string');
+export const nullType = typeFn('null');
 
 export function anyOf(...mappers: JSONSchemaMappers<JSONSchemaAnyOfValue>) {
     return mappers.reduce((obj, mapper) => mapper(obj), { anyOf: [] } as JSONSchemaAnyOfValue);
@@ -91,7 +97,6 @@ export function items(value: JSONSchemaValue) {
         items: value
     })
 }
-
 
 export function enumVals<T extends JSONSchemaStringValue | JSONSchemaNumberValue>(values: T['enum']) {
     return (val: T) : T => ({
