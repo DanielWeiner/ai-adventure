@@ -32,16 +32,14 @@ async function startServer() {
 
 startServer();
 
-if (process.env.NODE_ENV !== 'development') {
-    http.createServer((req, res) => {
-        if (req.url === '/health' && req.method === 'GET') {
-            res.writeHead(200, {'Content-Type': 'text/plain'});
-            res.end('OK');
-        } else {
-            res.writeHead(404, {'Content-Type': 'text/plain'});
-            res.end('Not Found');
-        }
-    }).listen(80, () => {
-        logger.info(`Health check endpoint listening on port 80`)
-    });
-}
+http.createServer((req, res) => {
+    if (req.url === '/health' && req.method === 'GET') {
+        res.writeHead(200, {'Content-Type': 'text/plain'});
+        res.end('OK');
+    } else {
+        res.writeHead(404, {'Content-Type': 'text/plain'});
+        res.end('Not Found');
+    }
+}).listen(80, () => {
+    logger.info(`Health check endpoint listening on port 80`)
+});
