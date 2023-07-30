@@ -18,15 +18,17 @@ services:
       - ./data/redis:/data
   ai-queue-server:
     build: 
-      context: ai-queue
-      dockerfile: docker/Dockerfile
+      context: .
+      dockerfile: packages/ai-queue/docker/Dockerfile
       target: dev
     volumes:
-      - ./ai-queue:/home/node/app/
-      - queue-server-deps:/home/node/app/node_modules/
-      - queue-server-dist:/home/node/app/.ai-queue/
+      - /home/node/app/packages/ai-queue/.ai-queue/
+      - /home/node/app/node_modules/
+      - /home/node/app/packages/app/node_modules/
+      - /home/node/app/packages/ai-queue/node_modules/
+      - ./:/home/node/app/
     env_file:
-      - ai-queue/.env
+      - packages/ai-queue/.env
     ports:
       - 8080:80
       - 9229:9229
@@ -38,18 +40,19 @@ services:
       - REDIS_URL=redis://ai-queue:6379
   app-dev-server:
     build: 
-      context: .
-      dockerfile: app/docker/Dockerfile
-      target: dev
+      context:    .
+      dockerfile: packages/app/docker/Dockerfile
+      target:     dev
     volumes:
+      - /home/node/app/packages/app/.next/
+      - /home/node/app/node_modules/
+      - /home/node/app/packages/app/node_modules/
+      - /home/node/app/packages/ai-queue/node_modules/
       - ./:/home/node/app/
-      - app-server-data:/home/node/app/data/
-      - app-server-dist:/home/node/app/.next/
-      - app-server-deps:/home/node/app/node_modules/
-      - app-server-ai-deps:/home/node/app/ai-queue/node_modules/
-      - app-server-ai-dist:/home/node/app/ai-queue/.ai-queue/
+    tmpfs:
+      - /home/node/app/
     env_file:
-      - .env
+      - packages/app/.env
     ports:
       - 3000:3000
       - 9230:9230
@@ -71,10 +74,4 @@ volumes:
   app-server-deps:
     driver: local
   app-server-dist:
-    driver: local
-  app-server-data:
-    driver: local
-  app-server-ai-deps:
-    driver: local
-  app-server-ai-dist:
     driver: local
