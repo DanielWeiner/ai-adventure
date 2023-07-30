@@ -50,7 +50,7 @@ const ChatBubble = ({
         if (editing && inputElement.current) {
             inputElement.current.focus();
         }
-    }, [ editing, inputElement.current ])
+    }, [ editing ])
 
     return (
         <div className={`w-full mt-4 flex flex-col border-t border-t-slate-400 first:mt-0 first:border-0 px-4 border-opacity-50 ${role === 'user' ? 'items-end' : 'items-start'}`}>

@@ -198,11 +198,6 @@ class Route {
                         const intentDetectionItem = pipeline.getItemByRequestAlias('intentDetection');
 
                         const finalize = async () => {
-                            if (sentenceSplittingItem && intentDetectionItem) {
-                                console.log(await sentenceSplittingItem.getContent());
-                                console.log(JSON.parse(await intentDetectionItem.getContent()));
-                            }
-
                             await conversations.updateOne({ 
                                 _id: conversationId, 
                                 messages: {

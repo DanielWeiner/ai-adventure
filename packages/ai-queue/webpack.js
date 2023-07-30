@@ -32,7 +32,7 @@ module.exports = {
         }),
         nodeExternals({
             modulesDir: path.resolve(__dirname, '../../node_modules'),
-        }) 
+        })
     ],
     externalsPresets: { node: true }
 };
