@@ -9,7 +9,6 @@
   "license": "ISC",
   "dependencies": {},
   "devDependencies": {
-    "lerna": "^7.1.4",
     "yarn": "^1.22.19"
   },
   "private": true
