@@ -6,10 +6,10 @@ RUN corepack enable
 WORKDIR /home/node/app
 
 FROM base AS prod-deps
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --filter ai-queue --prod --frozen-lockfile
+RUN pnpm --filter ai-queue install --prod --frozen-lockfile
 
 FROM base AS build
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --filter ai-queue --frozen-lockfile
+RUN pnpm --filter ai-queue install --frozen-lockfile
 RUN pnpm --filter ai-queue build
 
 FROM base AS dev
