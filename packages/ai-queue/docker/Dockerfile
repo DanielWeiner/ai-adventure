@@ -17,7 +17,6 @@ COPY --from=build /home/node/app/node_modules/ /home/node/app/node_modules
 COPY --from=build /home/node/app/packages/ai-queue/node_modules/ /home/node/app/packages/ai-queue/node_modules
 COPY --from=build /home/node/app/packages/ai-queue/.ai-queue /home/node/app/packages/ai-queue/.ai-queue
 
-WORKDIR /home/node/app
 ENV NODE_ENV=development
 ENTRYPOINT [ "/bin/sh", "packages/ai-queue/docker/start_dev_server.sh" ]
 
@@ -26,6 +25,6 @@ COPY --from=prod-deps /home/node/app/node_modules/ /home/node/app/node_modules
 COPY --from=prod-deps /home/node/app/packages/ai-queue/node_modules/ /home/node/app/packages/ai-queue/node_modules
 COPY --from=build /home/node/app/packages/ai-queue/.ai-queue /home/node/app/packages/ai-queue/.ai-queue
 
-WORKDIR /home/node/app/
+WORKDIR /home/node/app/packages/ai-queue
 ENV NODE_ENV=production
-ENTRYPOINT [ "pnpm", "--filter", "ai-queue", "exec", "npm", "run", "start" ]
+ENTRYPOINT [ "npm", "run", "start" ]
