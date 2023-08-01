@@ -22,11 +22,10 @@ services:
       dockerfile: packages/ai-queue/docker/Dockerfile
       target: dev
     volumes:
+      - ./packages/ai-queue:/home/node/app/packages/ai-queue
       - /home/node/app/packages/ai-queue/.ai-queue/
-      - /home/node/app/node_modules/
       - /home/node/app/packages/app/node_modules/
       - /home/node/app/packages/ai-queue/node_modules/
-      - ./:/home/node/app/
     env_file:
       - packages/ai-queue/.env
     ports:
@@ -66,12 +65,3 @@ services:
     environment:
       - REDIS_URL=redis://ai-queue:6379
       - MONGO_HOST=db
-volumes:
-  queue-server-deps:
-    driver: local
-  queue-server-dist:
-    driver: local
-  app-server-deps:
-    driver: local
-  app-server-dist:
-    driver: local
