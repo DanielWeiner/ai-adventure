@@ -2,14 +2,7 @@
   "name": "ai-adventure",
   "version": "1.0.0",
   "description": "",
-  "workspaces": [
-    "packages/*"
-  ],
   "author": "Daniel Weiner",
   "license": "ISC",
-  "dependencies": {},
-  "devDependencies": {
-    "yarn": "^1.22.19"
-  },
   "private": true
 }

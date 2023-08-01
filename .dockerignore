@@ -1,8 +1,5 @@
 /data/
-/node_modules/
-/packages/app/node_modules/
 /packages/app/.next/
-/packages/ai-queue/node_modules/
 /packages/ai-queue/.ai-queue/
 production.env
 .env

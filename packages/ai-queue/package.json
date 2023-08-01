@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": ".ai-queue/server.js",
   "scripts": {
-    "build": "npx webpack --config webpack.js",
-    "watch": "npx webpack --config webpack.js --watch",
-    "start": "node .ai-queue/server.js"
+    "build": "pnpm exec webpack --config webpack.js",
+    "watch": "pnpm exec webpack --config webpack.js --watch",
+    "start": "pnpm exec node .ai-queue/server.js"
   },
   "author": "",
   "license": "ISC",

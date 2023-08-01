@@ -2,15 +2,14 @@
 set -Eeuo pipefail
 trap "kill 0" EXIT TERM INT ABRT
 
-npx yarn workspace ai-queue install
-npm run --workspace=ai-queue build
+pnpm --filter ai-queue build
 (
     set -euo pipefail
-    npx nodemon --inspect=0.0.0.0:9229 $(which npm) run --workspace=ai-queue start
+    pnpm --filter ai-queue exec nodemon --inspect=0.0.0.0:9229 $(which npm) run start
 ) &
 (
     set -euo pipefail
-    npm run --workspace=ai-queue watch
+    pnpm --filter ai-queue watch
 ) &
 
 wait -n
