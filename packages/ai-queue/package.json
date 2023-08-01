@@ -5,7 +5,7 @@
   "scripts": {
     "build": "pnpm exec webpack --config webpack.js",
     "watch": "pnpm exec webpack --config webpack.js --watch",
-    "start": "pnpm exec node .ai-queue/server.js"
+    "start": "node .ai-queue/server.js"
   },
   "author": "",
   "license": "ISC",
