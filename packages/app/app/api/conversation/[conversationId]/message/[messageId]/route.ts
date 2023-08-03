@@ -1,5 +1,5 @@
 import { Session, authorize } from "@/app/api/auth";
-import { findRelevantInformation, getConversationCollection, Message, rollbackConversationRevision, startAssistantPrompt } from "@/app/api/conversation";
+import { findRelevantInformation, getConversationCollection, rollbackConversationRevision, startAssistantPrompt } from "@/app/api/conversation";
 import { resetNounRevision } from "@/app/api/noun";
 import { mongo } from "@/app/mongo";
 import { MongoClient } from "mongodb";

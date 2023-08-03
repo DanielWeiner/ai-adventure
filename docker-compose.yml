@@ -48,8 +48,6 @@ services:
       - /home/node/app/packages/app/node_modules/
       - /home/node/app/packages/ai-queue/node_modules/
       - ./:/home/node/app/
-    tmpfs:
-      - /home/node/app/
     env_file:
       - packages/app/.env
     ports:

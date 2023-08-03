@@ -1,32 +1,14 @@
-import { ChatCompletionFunctions, ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum, CreateChatCompletionRequest } from "openai";
+import { ChatCompletionFunctions, ChatCompletionRequestMessage, CreateChatCompletionRequest } from "openai";
 import { v4 as uuid } from 'uuid';
-
-export interface PipelineItemConfigPrompt {
-    role:          ChatCompletionRequestMessageRoleEnum;
-    replacements:  PipelineItemPromptReplacement[];
-    functionName?: string;
-}
-
-export interface ItemResultsReplacement {
-    prevItemId: string;
-    regexMatch?:      [string, string];
-    regexMatchIndex?: number;
-}
-
-export interface StringLiteralReplacement {
-    value: string;
-}
-
-export type PipelineItemPromptReplacement = ItemResultsReplacement | StringLiteralReplacement;
-export type PromptReplacementTransformer = (prevPipelineItemIds: string[]) => PipelineItemPromptReplacement;
-type PromptConfigTransformer = (prevPipelineItemIds: string[]) => PipelineItemConfigPrompt;
+import { DataTransformConfigValue, transform } from "./dataTransform";
+import { systemPrompt } from "./prompt";
 
 export interface PipelineItemRequestConfig {
     id:             string;
     alias:          string;
     kind:           'function' | 'message' | 'stream';
-    messages:       (PipelineItemConfigPrompt | ChatCompletionRequestMessage)[];
-    systemMessage?: PipelineItemConfigPrompt | string;
+    messages:       DataTransformConfigValue[];
+    systemMessage?: DataTransformConfigValue;
     functionName?:  string;
     functions?:     ChatCompletionFunctions[];
     configuration?: Partial<Omit<CreateChatCompletionRequest, 'messages' | 'stream'>>;
@@ -34,8 +16,8 @@ export interface PipelineItemRequestConfig {
 }
 
 type PipelineItemRequestInput = Omit<PipelineItemRequestConfig, 'messages' | 'systemMessage' | 'id'> & {
-    messages:       (PromptConfigTransformer | ChatCompletionRequestMessage)[];
-    systemMessage?: PromptConfigTransformer | ChatCompletionRequestMessage | string;
+    messages:       (DataTransformConfigValue | ChatCompletionRequestMessage)[];
+    systemMessage?: DataTransformConfigValue | ChatCompletionRequestMessage | string;
     alias?:         string;
 }
 
@@ -136,15 +118,10 @@ class PipelineItemSingle implements PipelineConfigItem {
                     ...this.#requestInput,
                     id: this.#id,
                     alias: this.#requestInput.alias || this.#id,
-                    messages: this.#requestInput.messages
-                        .map(transformer => typeof transformer === 'function' ? transformer(prevIds) : transformer),
+                    messages: this.#requestInput.messages.map(value => transform(value)),
                     systemMessage: 
-                        typeof this.#requestInput.systemMessage === 'function' ?
-                            this.#requestInput.systemMessage(prevIds) :
                         typeof this.#requestInput.systemMessage === 'string' ? 
-                            this.#requestInput.systemMessage :
-                        typeof this.#requestInput.systemMessage === 'object' && this.#requestInput.systemMessage ? this.#requestInput.systemMessage.content!
-                            : undefined
+                            systemPrompt`${this.#requestInput.systemMessage}` : transform(this.#requestInput.systemMessage)
                 }
             }
         }

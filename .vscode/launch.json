@@ -7,24 +7,11 @@
 
         {
             "address": "0.0.0.0",
-            "localRoot": "${workspaceFolder}/app",
+            "localRoot": "${workspaceFolder}",
             "name": "Attach to Remote",
             "port": 9233,
-            "remoteRoot": "/home/node/app/app",
+            "remoteRoot": "/home/node/app",
             "request": "attach",
-            "skipFiles": [
-                "<node_internals>/**"
-            ],
-            "type": "node"
-        },
-        {
-            "name": "Launch via NPM",
-            "request": "launch",
-            "runtimeArgs": [
-                "run-script",
-                "dev"
-            ],
-            "runtimeExecutable": "npm",
             "skipFiles": [
                 "<node_internals>/**"
             ],

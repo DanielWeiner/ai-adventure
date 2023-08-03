@@ -3,14 +3,14 @@ import { Collection, MongoClient } from "mongodb";
 import { ChatCompletionRequestMessage, ChatCompletionRequestMessageRoleEnum } from "openai";
 import { apiUrl } from "./api";
 import { cookies } from "next/headers";
-import { NounType, getConversationNoun, getConversationNounRevision } from "./noun";
-import { assistantPrompt, prevResult, systemPrompt, userPrompt } from "ai-queue/pipeline/prompt";
+import { NounType, getConversationNounRevision } from "./noun";
+import { assistantPrompt, functionCallPrompt, systemPrompt, userPrompt } from "ai-queue/pipeline/prompt";
 import { v4 as uuid } from 'uuid';
 import { Intent } from "../lib/intent";
 import { Pipeline } from "ai-queue/pipeline/pipeline";
 import { PipelineItemConfig } from "ai-queue/pipeline/config";
 import { createIntentDetectionPrompt } from "../lib/intent/intentPrompt";
-import { RELEVANT_INFO_FUNCTION_NAME, generateRelevantInfoJson, getRelevantInfoSchema } from "../lib/relevant-info/schema";
+import { RELEVANT_INFO_FUNCTION_NAME, getRelevantInfoSchema } from "../lib/relevant-info/schema";
 
 export interface Message {
     id:           string;
@@ -140,7 +140,7 @@ function createSentenceSplittingPrompt(messages: ChatCompletionRequestMessage[],
                 - Merge the sentences together to verify that they match the first stage.
             `,
             messages: [
-                { role: 'assistant', function_call: { name: RELEVANT_INFO_FUNCTION_NAME, arguments: generateRelevantInfoJson(relevantInfo) }},
+                functionCallPrompt(RELEVANT_INFO_FUNCTION_NAME, relevantInfo),
                 assistantPrompt`Entering chat mode.`,
                 assistantPrompt`${lastAssistantPrompt}`,
                 userPrompt`${lastUserPrompt}`,
@@ -197,7 +197,7 @@ export async function startAssistantPrompt(mongoClient: MongoClient, conversatio
             `,
             messages: [
                 ...openaiMessages.slice(-16, -1),
-                { role: 'assistant', function_call: { name: RELEVANT_INFO_FUNCTION_NAME, arguments: generateRelevantInfoJson(relevantInfo)} },
+                functionCallPrompt(RELEVANT_INFO_FUNCTION_NAME, relevantInfo),
                 ...openaiMessages.slice(-1)
             ],
             functions: [

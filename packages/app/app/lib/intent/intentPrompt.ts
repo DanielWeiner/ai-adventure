@@ -1,7 +1,8 @@
 import { PipelineItemConfig } from "ai-queue/pipeline/config";
-import { userPrompt, prevResult } from "ai-queue/pipeline/prompt";
+import { userPrompt, functionCallPrompt } from "ai-queue/pipeline/prompt";
 import { generateIntentsSchema } from "./schema";
-import { RELEVANT_INFO_FUNCTION_NAME, RelevantInformation, generateRelevantInfoJson, getRelevantInfoSchema } from "../relevant-info/schema";
+import { RELEVANT_INFO_FUNCTION_NAME, RelevantInformation, getRelevantInfoSchema } from "../relevant-info/schema";
+import { prevResult } from "ai-queue/pipeline/dataTransform";
 
 const splitSentencePrefix = 'SECOND STAGE';
 
@@ -56,7 +57,7 @@ export function createIntentDetectionPrompt(relevantInfo: RelevantInformation) :
                 - Replaced traits should follow the same formatting rules as "addTraits".
             `,
             messages: [
-                { role: 'assistant', function_call: { name: RELEVANT_INFO_FUNCTION_NAME, arguments: generateRelevantInfoJson(relevantInfo)  } },
+                functionCallPrompt(RELEVANT_INFO_FUNCTION_NAME, relevantInfo),
                 userPrompt`${prevResult(new RegExp(`^(?:(?:.|[\\r\\n])*(?=${splitSentencePrefix})${splitSentencePrefix})?((?:.|[\\r\\n])*)$`), 1)}`
             ],
             autoConfirm: false
