@@ -2,8 +2,10 @@ FROM node:18-alpine AS base
 COPY ./ /home/node/app/
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+RUN apk add --no-cache tini
 RUN corepack enable
 WORKDIR /home/node/app
+ENTRYPOINT ["/sbin/tini", "--"]
 
 FROM base AS prod-deps
 RUN pnpm --filter ai-queue install --prod --frozen-lockfile
@@ -27,4 +29,4 @@ COPY --from=build /home/node/app/packages/ai-queue/.ai-queue /home/node/app/pack
 
 WORKDIR /home/node/app/packages/ai-queue
 ENV NODE_ENV=production
-CMD [ "npm", "run", "start" ]
+CMD [ "node", ".ai-queue/server.js" ]

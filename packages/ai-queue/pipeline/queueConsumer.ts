@@ -1,4 +1,4 @@
-import { RedisClientType, commandOptions } from "redis";
+import { RedisClientType } from "redis";
 import { v4 as uuid } from 'uuid';
 import EventEmitter from "events";
 

@@ -138,26 +138,6 @@ export function stringify(value: any) {
     })
 }
 
-export function expandConfigValueToTransform(configValue: DataTransformConfigValue) : DataTransformConfigValue & { transform: DataTransformResultArray } {
-    if ('transform' in configValue) {
-        return configValue;
-    }
-
-    return addConfigItem({
-        type: configValue.type,
-        transform: [
-            {
-                type: 'literal',
-                value: configValue.value
-            }
-        ]
-    } as DataTransformConfigValue & { transform: DataTransformResultArray }) ;
-}
-
-export function buildPipelineValue() {
-    
-}
-
 export function prevResult(regexMatch?: string | RegExp, regexMatchIndex: number = 0) {
     return prevResultNth(0, regexMatch, regexMatchIndex);
 }
@@ -165,42 +145,45 @@ export function prevResult(regexMatch?: string | RegExp, regexMatchIndex: number
 export function pipelined(strings: TemplateStringsArray, ...values: Array<any>) : TransformConfigStringValue & { transform: DataTransformResultArray } {
     return addConfigItem({
         type: 'string',
-        transform: strings.reduce((resultArray, str, i) => {
-            const newResults = resultArray.slice();
-            
-            if (str) {
-                newResults.push({
+        transform: strings.reduce((transformItems, str, i) => {
+            const itemsFromString : typeof transformItems = str ? [
+                { 
                     type:        'literal',
                     literalType: 'string',
                     value:       str
-                });
-            }
+                }
+            ] : [];
+
+            const resultItems = [...transformItems, ...itemsFromString];
             
             if (typeof values[i] === 'undefined') {
-                return newResults;
+                return resultItems;
             }
 
             const valueConfig = transform(values[i]);
-            console.log(values[i], valueConfig);
 
             if (valueConfig.type === 'string') {
                 if ('transform' in valueConfig) {
-                    newResults.push(...valueConfig.transform);
-                } else {
-                    newResults.push({
+                    return [...resultItems, ...valueConfig.transform];
+                }
+
+                return [
+                    ...resultItems,
+                    {
                         type:        'literal',
                         literalType: 'string',
                         value:       valueConfig.value
-                    });
-                }
-            } else {
-                newResults.push({
-                    type: 'configItem',
-                    value: valueConfig
-                });
+                    }
+                ];
             }
 
-            return newResults;
+            return [
+                ...resultItems,
+                {
+                    type: 'configItem',
+                    value: valueConfig
+                }
+            ];
         }, [] as DataTransformResultArray)
     });
 }
@@ -340,7 +323,12 @@ function hydrateTransform({
     return transform.map(item => {
         if (item.type === 'literal' || item.type === 'configItem') {
             const type = item.type === 'literal' ? item.literalType : item.value.type;
-            const value = item.type === 'literal' ? item.value : hydrate({ contentById, idsByAlias, prevIds,data: item.value });
+            const value = item.type === 'literal' ? item.value : hydrate({ 
+                contentById, 
+                idsByAlias, 
+                prevIds, 
+                data: item.value 
+            });
             
             return {
                 type,
