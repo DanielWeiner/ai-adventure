@@ -5,7 +5,6 @@ import { createItemsWatcher } from "./pipeline/itemsWatcher";
 import { createRequestsWatcher } from "./pipeline/requestsWatcher";
 import { createLogger } from './pipeline/logger';
 import { createRedisClient } from './pipeline/redisClient';
-const { REDIS_URL } = process.env;
 
 const logger = createLogger();
 
